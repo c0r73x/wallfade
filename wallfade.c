@@ -247,11 +247,6 @@ void drawPlanes()
         if (settings.nfiles > 1) {
             static float alpha = 0.0f;
 
-            for (int i = 0; i < settings.nmon; i++) {
-                drawPlane(&planes[i], planes[i].back, alpha);
-                drawPlane(&planes[i], planes[i].front, 1.0f - alpha);
-            }
-
             alpha += settings.fade * settings.seconds;
 
             if (alpha > 1.0f) {
@@ -275,6 +270,11 @@ void drawPlanes()
                 }
 
                 alpha = 0.0f;
+            }
+
+            for (int i = 0; i < settings.nmon; i++) {
+                drawPlane(&planes[i], planes[i].back, alpha);
+                drawPlane(&planes[i], planes[i].front, 1.0f - alpha);
             }
         } else {
             for (int i = 0; i < settings.nmon; i++) {
