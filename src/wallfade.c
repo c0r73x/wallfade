@@ -358,9 +358,9 @@ char **getFiles()
                 files[i] = malloc(PATH_MAX);
                 strlcpy(files[i], file, PATH_MAX);
                 nfiles++;
-            }
 
-            free(file);
+                free(file);
+            }
         }
 
         settings.nfiles = nfiles;
