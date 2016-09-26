@@ -30,9 +30,22 @@
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_SPEED 3
 
-struct _opengl {
-    GLXContext ctx;
-} opengl;
+struct Path {
+    char path[PATH_MAX];
+};
+
+struct Plane {
+    int width;
+    int height;
+    int x;
+    int y;
+
+    uint32_t front;
+    uint32_t back;
+
+    char front_path[PATH_MAX];
+    char back_path[PATH_MAX];
+};
 
 struct _settings {
     Display *dpy;
@@ -50,29 +63,18 @@ struct _settings {
     uint32_t screen;
 
     int nmon;
-    int nfiles;
-    int total_files;
+    int *nfiles;
 
     int fade;
     int idle;
 
-    char path[PATH_MAX];
+    struct Plane *planes;
+    struct Path *paths;
 } settings;
 
-struct Plane {
-    int width;
-    int height;
-    int x;
-    int y;
-
-    uint32_t front;
-    uint32_t back;
-
-    char front_path[PATH_MAX];
-    char back_path[PATH_MAX];
-};
-
-struct Plane *planes = NULL;
+struct _opengl {
+    GLXContext ctx;
+} opengl;
 
 Window *findDesktop();
 float getTime();
@@ -85,13 +87,15 @@ void drawplane(struct Plane *plane, uint32_t texture, float alpha);
 void drawplanes();
 void update();
 int checkfile(char *file);
-char **getfiles();
-void cleanFiles(char **files);
+char **getfiles(int monitor);
+void cleanFiles(char **files, int total_files);
 void ThrowWandException(MagickWand *wand);
 MagickWand *doMagick(const char *current, int width, int height);
 void loadTexture(const char *current, uint32_t *id, int width, int height);
-void randomImage(uint32_t *side, struct Plane *plane, const char *not);
-void randomImages();
+void randomImage(uint32_t *side, struct Plane *plane, const char *not,
+                 int monitor);
+void randomImages(int montior);
+int parsePaths(char *paths);
 
 Window *findDesktop()
 {
@@ -140,10 +144,6 @@ float getTime()
 
 void getMonitors()
 {
-    if (planes) {
-        free(planes);
-    }
-
     XRRMonitorInfo *monitors = XRRGetMonitors(
                                    settings.dpy,
                                    settings.root,
@@ -156,16 +156,17 @@ void getMonitors()
         exit(-1);
     }
 
-    planes = malloc(settings.nmon * sizeof(struct Plane));
+    settings.planes = malloc(settings.nmon * sizeof(struct Plane));
+    settings.nfiles = malloc(settings.nmon * sizeof(int));
 
     for (int i = 0; i < settings.nmon; i++) {
-        planes[i].width = monitors[i].width;
-        planes[i].height = monitors[i].height;
-        planes[i].x = monitors[i].x;
-        planes[i].y = monitors[i].y;
+        settings.planes[i].width = monitors[i].width;
+        settings.planes[i].height = monitors[i].height;
+        settings.planes[i].x = monitors[i].x;
+        settings.planes[i].y = monitors[i].y;
 
-        planes[i].front = 0;
-        planes[i].back = 0;
+        settings.planes[i].front = 0;
+        settings.planes[i].back = 0;
 
         printf(
             "monitor: %d %dx%d+%d+%d\n",
@@ -325,8 +326,12 @@ void gotsig(int signum)
 
 void shutdown()
 {
-    if (planes) {
-        free(planes);
+    if (settings.planes) {
+        free(settings.planes);
+    }
+
+    if (settings.paths) {
+        free(settings.paths);
     }
 
     glXDestroyContext(settings.dpy, opengl.ctx);
@@ -367,51 +372,63 @@ void drawPlane(struct Plane *plane, uint32_t texture, float alpha)
 
 void drawPlanes()
 {
-    if (settings.nfiles) {
-        if (settings.nfiles > 1) {
-            static float alpha = 0.0f;
+    static float alpha = 0.0f;
 
-            alpha += settings.fade * settings.seconds;
+    alpha += settings.fade * settings.seconds;
 
-            if (alpha > 1.0f) {
-                settings.fading = 0;
+    if (alpha > 1.0f) {
+        settings.fading = 0;
 
-                for (int i = 0; i < settings.nmon; i++) {
-                    uint32_t tmp = planes[i].front;
-                    planes[i].front = planes[i].back;
-                    strlcpy(
-                        planes[i].front_path,
-                        planes[i].back_path,
-                        sizeof(planes[i].front_path)
-                    );
-                    planes[i].back = tmp;
+        for (int i = 0; i < settings.nmon; i++) {
+            uint32_t tmp = settings.planes[i].front;
+            settings.planes[i].front = settings.planes[i].back;
+            strlcpy(
+                settings.planes[i].front_path,
+                settings.planes[i].back_path,
+                sizeof(settings.planes[i].front_path)
+            );
+            settings.planes[i].back = tmp;
 
-                    randomImage(
-                        &planes[i].back,
-                        &planes[i],
-                        planes[i].front_path
-                    );
-                }
+            randomImage(
+                &settings.planes[i].back,
+                &settings.planes[i],
+                settings.planes[i].front_path,
+                i
+            );
+        }
 
-                alpha = 0.0f;
-            }
+        alpha = 0.0f;
+    }
 
-            for (int i = 0; i < settings.nmon; i++) {
-                drawPlane(&planes[i], planes[i].back, alpha);
-                drawPlane(&planes[i], planes[i].front, 1.0f - alpha);
-            }
-        } else {
-            for (int i = 0; i < settings.nmon; i++) {
-                drawPlane(&planes[i], planes[i].front, 1.0f);
+    for (int i = 0; i < settings.nmon; i++) {
+        if (settings.nfiles[i]) {
+            if (settings.nfiles[i] > 1) {
+                drawPlane(
+                    &settings.planes[i],
+                    settings.planes[i].back,
+                    alpha
+                );
+                drawPlane(
+                    &settings.planes[i],
+                    settings.planes[i].front,
+                    1.0f - alpha
+                );
+            } else {
+                drawPlane(
+                    &settings.planes[i],
+                    settings.planes[i].front,
+                    1.0f
+                );
                 randomImage(
-                    &planes[i].back,
-                    &planes[i],
-                    planes[i].front_path
+                    &settings.planes[i].back,
+                    &settings.planes[i],
+                    settings.planes[i].front_path,
+                    i
                 );
             }
+        }  else {
+            randomImages(i);
         }
-    }  else {
-        randomImages();
     }
 }
 
@@ -442,19 +459,24 @@ void update()
     }
 }
 
-char **getFiles()
+char **getFiles(int monitor, int *total_files)
 {
     char **files = 0;
 
     glob_t globbuf;
 
-    int err = glob(settings.path, GLOB_BRACE | GLOB_TILDE, NULL, &globbuf);
+    int err = glob(
+                  settings.paths[monitor].path,
+                  GLOB_BRACE | GLOB_TILDE,
+                  NULL,
+                  &globbuf
+              );
 
-    settings.nfiles = 0;
+    settings.nfiles[monitor] = 0;
 
     if (err == 0) {
         files = malloc((globbuf.gl_pathc + 1) * sizeof(char *));
-        settings.total_files = globbuf.gl_pathc;
+        *total_files = globbuf.gl_pathc;
 
         size_t i;
         int nfiles = 0;
@@ -479,17 +501,17 @@ char **getFiles()
             }
         }
 
-        settings.nfiles = nfiles;
+        settings.nfiles[monitor] = nfiles;
         globfree(&globbuf);
     }
 
     return files;
 }
 
-void cleanFiles(char **files)
+void cleanFiles(char **files, int total_files)
 {
-    if (settings.total_files) {
-        for (int i = 0; i < settings.total_files; i++) {
+    if (total_files) {
+        for (int i = 0; i < total_files; i++) {
             free(files[i]);
         }
 
@@ -603,18 +625,20 @@ void loadTexture(const char *current, uint32_t *id, int width, int height)
     MagickRelinquishMemory(data);
 }
 
-void randomImage(uint32_t *side, struct Plane *plane, const char *not)
+void randomImage(uint32_t *side, struct Plane *plane, const char *not,
+                 int monitor)
 {
-    char **files = getFiles();
+    int total_files = 0;
+    char **files = getFiles(monitor, &total_files);
 
-    if (settings.nfiles) {
+    if (settings.nfiles[monitor] > 0) {
         int bkrand = 0;
 
         do {
-            bkrand = rand() % settings.nfiles;
+            bkrand = rand() % settings.nfiles[monitor];
         } while (
             strcmp(files[bkrand], not) == 0 &&
-            settings.nfiles != 1
+            settings.nfiles[monitor] != 1
         );
 
         strlcpy(
@@ -630,55 +654,111 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not)
             plane->height
         );
 
-        cleanFiles(files);
+    }
+
+    cleanFiles(files, total_files);
+}
+
+void randomImages(int monitor)
+{
+    randomImage(
+        &settings.planes[monitor].front,
+        &settings.planes[monitor],
+        "",
+        monitor
+    );
+
+    if (settings.nfiles[monitor] > 1) {
+        randomImage(
+            &settings.planes[monitor].back,
+            &settings.planes[monitor],
+            settings.planes[monitor].front_path,
+            monitor
+        );
     }
 }
 
-void randomImages()
+int parsePaths(char *paths)
 {
-    char **files = getFiles();
+    settings.paths = malloc(settings.nmon * sizeof(struct Path));
 
-    if (settings.nfiles) {
-        for (int i = 0; i < settings.nmon; i++) {
-            strlcpy(
-                planes[i].front_path,
-                files[rand() % settings.nfiles],
-                sizeof(planes[i].front_path)
-            );
+    for (int i = 0; i < settings.nmon; i++) {
+        settings.paths[i].path[0] = 0;
+    }
 
-            loadTexture(
-                planes[i].front_path,
-                &planes[i].front,
-                planes[i].width,
-                planes[i].height
-            );
+    char *p = 0;
+    char *m = 0;
 
-            if (settings.nfiles > 1) {
-                int bkrand = 0;
+    char default_path[PATH_MAX] = {0};
 
-                do {
-                    bkrand = rand() % settings.nfiles;
-                } while (strcmp(files[bkrand], planes[i].front_path) == 0);
+    while ((p = strsep(&paths, ",")) != NULL) {
+        if ((m = strsep(&p, ":")) != NULL && p != NULL) {
+            int monitor = atoi(m);
 
+            if (monitor >= 0 && monitor < settings.nmon) {
                 strlcpy(
-                    planes[i].back_path,
-                    files[bkrand],
-                    sizeof(planes[i].back_path)
+                    settings.paths[monitor].path,
+                    p,
+                    sizeof(settings.paths[monitor].path)
                 );
-
-                loadTexture(
-                    planes[i].back_path,
-                    &planes[i].back,
-                    planes[i].width,
-                    planes[i].height
+            } else {
+                fprintf(
+                    stderr,
+                    "Monitor %d not found, using default\n",
+                    monitor
                 );
             }
         }
 
-        cleanFiles(files);
-    } else {
-        printf("No files found!\n");
+        if (m != NULL) {
+            strlcpy(default_path, m, sizeof(default_path));
+        }
     }
+
+    if (strlen(default_path)) {
+        printf("Default path: %s\n", default_path);
+    }
+
+    for (int i = 0; i < settings.nmon; i++) {
+        int len = strlen(settings.paths[i].path);
+
+        if (len == 0) {
+            if (strlen(default_path)) {
+                strlcpy(
+                    settings.paths[i].path,
+                    default_path,
+                    sizeof(settings.paths[i].path)
+                );
+
+                len = strlen(default_path);
+            } else {
+                fprintf(
+                    stderr,
+                    "Tried to set default path but none was specified!\n"
+                );
+                settings.running = 0;
+                return 0;
+            }
+        }
+
+        printf("Monitor %d path: %s\n", i, settings.paths[i].path);
+
+        if (settings.paths[i].path[len] == '/') {
+            strlcat(
+                settings.paths[i].path,
+                "*.{jpg,png}",
+                sizeof(settings.paths[i].path)
+            );
+        } else {
+            strlcat(
+                settings.paths[i].path,
+                "/*.{jpg,png}",
+                sizeof(settings.paths[i].path)
+            );
+        }
+    }
+
+    return 1;
 }
 
 int main(int argc, char *argv[])
@@ -693,13 +773,14 @@ int main(int argc, char *argv[])
     signal(SIGQUIT, gotsig);
 
     settings.running = 1;
-    settings.path[0] = 0;
     settings.fading = 0;
     settings.fade = DEFAULT_FADE_SPEED;
     settings.idle = DEFAULT_IDLE_TIME;
+    settings.planes = NULL;
+    settings.paths = NULL;
 
     static const struct option longOpts[] = {
-        { "path", required_argument, 0, 'p' },
+        { "paths", required_argument, 0, 'p' },
         { "fade", required_argument, 0, 'f' },
         { "idle", no_argument, 0, 'i' },
         { "help", no_argument, 0, 'h' },
@@ -707,6 +788,7 @@ int main(int argc, char *argv[])
     };
 
     int longIndex = 0;
+    char paths[PATH_MAX * 10];
 
     while (
         (c = getopt_long(argc, argv, "p:f:ih", longOpts, &longIndex)) != -1
@@ -723,15 +805,19 @@ int main(int argc, char *argv[])
                 break;
 
             case 'p':
-                strlcpy(settings.path, optarg, sizeof(settings.path));
+                strlcpy(paths, optarg, PATH_MAX * 10);
                 break;
 
             case 'h':
-                printf("Usage: %s [options]\n", argv[0]);
-                printf("\t-p, path\t: wallpapers path\n");
-                printf("\t-f, fade\t: fade speed (default 3)\n");
-                printf("\t-i, idle\t: idle time (default 3)\n");
-                printf("\t-h, help\t: help\n");
+                printf("Usage: %s -p path [options]\n", argv[0]);
+                printf("\t-f, fade \t: fade speed (default 3)\n");
+                printf("\t-i, idle \t: idle time (default 3)\n");
+                printf("\t-p, paths\t: wallpapers paths.\n");
+                printf("\t         \t  use monitor:path, if no monitor is\n");
+                printf("\t         \t  specified the path will be used as\n");
+                printf("\t         \t  the default path\n\n");
+                printf("\t         \t  example: -p 0:path,1:path,path\n\n");
+                printf("\t-h, help \t: help\n");
                 printf("\n");
                 return (0);
 
@@ -740,17 +826,19 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (settings.path[strlen(settings.path)] == '/') {
-        strlcat(settings.path, "*.{jpg,png}", sizeof(settings.path));
+    if (strlen(paths) == 0) {
+        fprintf(stderr, "No paths specified!\n");
     } else {
-        strlcat(settings.path, "/*.{jpg,png}", sizeof(settings.path));
-    }
+        if (init(argc, argv)) {
+            if (parsePaths(paths)) {
+                for (int i = 0; i < settings.nmon; i++) {
+                    randomImages(i);
+                }
 
-    if (init(argc, argv)) {
-        randomImages();
-
-        while (settings.running) {
-            update();
+                while (settings.running) {
+                    update();
+                }
+            }
         }
     }
 
