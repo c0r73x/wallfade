@@ -482,7 +482,6 @@ char **getFiles(int monitor, int *total_files)
         int nfiles = 0;
 
         #pragma omp parallel for private(i) reduction(+:nfiles)
-
         for (i = 0; i < globbuf.gl_pathc; i++) {
             char *file = realpath(globbuf.gl_pathv[i], NULL);
 
@@ -562,7 +561,7 @@ MagickWand *doMagick(const char *current, int width, int height)
 
     MagickWand *wand = MagickTransformImage(iwand, crop, "");
 
-    MagickResizeImage(wand, width, height, LanczosFilter, 1.0);
+    MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
 
     if (status == MagickFalse) {
         ThrowWandException(wand);
