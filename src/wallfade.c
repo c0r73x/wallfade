@@ -790,7 +790,7 @@ int main(int argc, char *argv[])
     char paths[PATH_MAX * 10];
 
     while (
-        (c = getopt_long(argc, argv, "p:f:ih", longOpts, &longIndex)) != -1
+        (c = getopt_long(argc, argv, "p:f:i:h", longOpts, &longIndex)) != -1
     ) {
 
         switch (c) {
