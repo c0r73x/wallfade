@@ -781,7 +781,7 @@ int main(int argc, char *argv[])
     static const struct option longOpts[] = {
         { "paths", required_argument, 0, 'p' },
         { "fade", required_argument, 0, 'f' },
-        { "idle", no_argument, 0, 'i' },
+        { "idle", required_argument, 0, 'i' },
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 }
     };
