@@ -1,22 +1,30 @@
-#include <X11/Xlib.h>
-#include <GL/glx.h>
-
-#include <glob.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <bsd/string.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
-
-#include <time.h>
-#include <getopt.h>
-#include <unistd.h>
-#include <X11/extensions/Xrandr.h>
-#include <linux/limits.h>
-
-#include <wand/MagickWand.h>
+#include <GL/gl.h>                  // for glColor4f, glTexCoord2f, glVertex2i
+#include <GL/glx.h>                 // for glXChooseVisual, glXCreateContext
+#include <X11/X.h>                  // for None, Window
+#include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
+#include <X11/Xutil.h>              // for XVisualInfo
+#include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
+#include <bsd/string.h>             // for strlcpy, strlcat
+#include <getopt.h>                 // for optarg, getopt
+#include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
+#include <limits.h>                 // for PATH_MAX
+#include <signal.h>                 // for signal, SIGINT, SIGKILL, SIGQUIT
+#include <stdint.h>                 // for uint32_t
+#include <stdio.h>                  // for fprintf, NULL, printf, stderr
+#include <stdlib.h>                 // for exit, free, malloc, rand, realpath
+#include <string.h>                 // for __s1_len, __s2_len, strcmp, strlen
+#include <sys/time.h>               // for CLOCK_MONOTONIC
+#include <time.h>                   // for timespec, clock_gettime, time
+#include <unistd.h>                 // for usleep
+#include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
+#include "magick/constitute.h"      // for ::CharPixel
+#include "magick/exception.h"       // for ExceptionType
+#include "magick/geometry.h"        // for ::CenterGravity
+#include "magick/log.h"             // for GetMagickModule
+#include "magick/magick-type.h"     // for ::MagickFalse
+#include "magick/resample.h"        // for ::LanczosFilter
+#include "wand/magick-image.h"      // for MagickExportImagePixels, MagickGe...
+#include "wand/magick-property.h"   // for MagickSetGravity
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_SPEED 3
@@ -336,8 +344,9 @@ char **getFiles()
         int nfiles = 0;
 
         #pragma omp parallel for private(i) reduction(+:nfiles)
+
         for (i = 0; i < globbuf.gl_pathc; i++) {
-            char* file = realpath(globbuf.gl_pathv[i], NULL);
+            char *file = realpath(globbuf.gl_pathv[i], NULL);
 
             if (file == NULL) {
                 fprintf(
@@ -350,6 +359,7 @@ char **getFiles()
                 strlcpy(files[i], file, PATH_MAX);
                 nfiles++;
             }
+
             free(file);
         }
 
@@ -572,7 +582,21 @@ int main(int argc, char *argv[])
     settings.fade = DEFAULT_FADE_SPEED;
     settings.idle = DEFAULT_IDLE_TIME;
 
-    while ((c = getopt(argc, argv, "w:p:f:i:")) != -1) {
+    static const struct option longOpts[] = {
+        { "wid", required_argument, 0, 'w' },
+        { "path", required_argument, 0, 'p' },
+        { "fade", required_argument, 0, 'f' },
+        { "idle", no_argument, 0, 'i' },
+        { "help", no_argument, 0, 'h' },
+        { 0, 0, 0, 0 }
+    };
+
+    int longIndex = 0;
+
+    while (
+        (c = getopt_long(argc, argv, "w:p:f:ih", longOpts, &longIndex)) != -1
+    ) {
+
         switch (c) {
             case 'w':
                 sscanf(optarg, "%x", &settings.wid);
@@ -589,6 +613,16 @@ int main(int argc, char *argv[])
             case 'p':
                 strlcpy(settings.path, optarg, sizeof(settings.path));
                 break;
+
+            case 'h':
+                printf("Usage: %s [options]\n", argv[0]);
+                printf("\t-w, wid \t: window id\n");
+                printf("\t-p, path\t: wallpapers path\n");
+                printf("\t-f, fade\t: fade speed (default 3)\n");
+                printf("\t-i, idle\t: idle time (default 3)\n");
+                printf("\t-h, help\t: help\n");
+                printf("\n");
+                return (0);
 
             default:
                 break;
