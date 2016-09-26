@@ -17,6 +17,8 @@ if(USEOPENMP)
     endif()
 endif()
 
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16")
+
 set(COMMON_SRC
     "wallfade.c"
     )

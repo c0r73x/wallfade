@@ -1,5 +1,6 @@
 #include <GL/gl.h>                  // for glColor4f, glTexCoord2f, glVertex2i
 #include <GL/glx.h>                 // for glXChooseVisual, glXCreateContext
+#include <X11/Xatom.h>              // for XA_ATOM
 #include <X11/X.h>                  // for None, Window
 #include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
 #include <X11/Xutil.h>              // for XVisualInfo
@@ -38,6 +39,8 @@ struct _settings {
     Screen *scr;
     XVisualInfo *vi;
     Window root;
+    Window desktop;
+    Window win;
 
     int running;
     int fading;
@@ -45,7 +48,6 @@ struct _settings {
     float seconds;
 
     uint32_t screen;
-    uint32_t wid;
 
     int nmon;
     int nfiles;
@@ -72,10 +74,11 @@ struct Plane {
 
 struct Plane *planes = NULL;
 
+Window *findDesktop();
 float getTime();
 void getMonitors();
 void initOpengl();
-void init();
+int init();
 void gotsig(int signum);
 void shutdown();
 void drawplane(struct Plane *plane, uint32_t texture, float alpha);
@@ -89,6 +92,43 @@ MagickWand *doMagick(const char *current, int width, int height);
 void loadTexture(const char *current, uint32_t *id, int width, int height);
 void randomImage(uint32_t *side, struct Plane *plane, const char *not);
 void randomImages();
+
+Window *findDesktop()
+{
+    unsigned int n;
+    Window troot, parent, *children;
+    char *name;
+    int status;
+    XWindowAttributes attrs;
+
+    XQueryTree(settings.dpy, settings.root, &troot, &parent, &children, &n);
+
+    for (unsigned int i = 0; i < n; i++) {
+        status = XFetchName(settings.dpy, children[i], &name);
+        status |= XGetWindowAttributes(settings.dpy, children[i], &attrs);
+
+        if ((status != 0) && (NULL != name)) {
+            if (
+                (attrs.map_state != 0) &&
+                (attrs.width == settings.scr->width) &&
+                (attrs.height == settings.scr->height) &&
+                (!strcmp(name, "Desktop"))
+            ) {
+                settings.win = children[i];
+                XFree(children);
+                XFree(name);
+
+                return &children[i];
+            }
+
+            if (name) {
+                XFree(name);
+            }
+        }
+    }
+
+    return &settings.root;
+}
 
 float getTime()
 {
@@ -149,7 +189,7 @@ void initOpengl()
         exit(-1);
     }
 
-    glXMakeCurrent(settings.dpy, settings.wid, opengl.ctx);
+    glXMakeCurrent(settings.dpy, settings.win, opengl.ctx);
 
     printf("GL_RENDERER = %s\n", (char *) glGetString(GL_RENDERER));
 
@@ -168,7 +208,7 @@ void initOpengl()
     glClearColor(0, 0, 0, 1);
 }
 
-void init()
+int init(int argc, char **argv)
 {
     MagickWandGenesis();
 
@@ -176,14 +216,14 @@ void init()
 
     if (settings.dpy == NULL) {
         fprintf(stderr, "Cannot connect to X server\n");
-        exit(-1);
+        return 0;
     }
 
     settings.scr = DefaultScreenOfDisplay(settings.dpy);
 
     if (settings.scr == NULL) {
         fprintf(stderr, "No screen found\n");
-        exit(-1);
+        return 0;
     }
 
     printf("ScreenSize: %dx%d\n", settings.scr->width, settings.scr->height);
@@ -193,13 +233,89 @@ void init()
 
     if (settings.vi == NULL) {
         fprintf(stderr, "No appropriate visual found\n");
-        exit(-1);
+        return 0;
     }
 
     settings.root = RootWindow(settings.dpy, settings.screen);
 
+    XSetWindowAttributes attr;
+    attr.override_redirect = 1;
+
+    Window *w = findDesktop();
+    settings.win = XCreateWindow(
+                       settings.dpy,
+                       *w,
+                       0,
+                       0,
+                       settings.scr->width,
+                       settings.scr->height,
+                       0,
+                       CopyFromParent,
+                       InputOutput,
+                       CopyFromParent,
+                       CWOverrideRedirect,
+                       &attr
+                   );
+
+    XSizeHints xsh;
+    xsh.flags  = PSize | PPosition;
+    xsh.width  = settings.scr->width;
+    xsh.height = settings.scr->height;
+
+    XWMHints xwmh;
+    xwmh.flags = InputHint;
+    xwmh.input = 0;
+
+    XSetWMProperties(
+        settings.dpy,
+        settings.win,
+        NULL,
+        NULL,
+        argv,
+        argc,
+        &xsh,
+        &xwmh,
+        NULL
+    );
+    Atom state[4];
+
+    state[0] = XInternAtom(settings.dpy, "_NET_WM_STATE_BELOW", 0);
+    state[1] = XInternAtom(settings.dpy, "_NET_WM_STATE_FULLSCREEN", 0);
+    state[2] = XInternAtom(settings.dpy, "_NET_WM_STATE_SKIP_PAGER", 0);
+    state[3] = XInternAtom(settings.dpy, "_NET_WM_STATE_SKIP_TASKBAR", 0);
+
+    XChangeProperty(
+        settings.dpy,
+        settings.win,
+        XInternAtom(settings.dpy, "_NET_WM_STATE", 0),
+        XA_ATOM,
+        32,
+        PropModeReplace,
+        (unsigned char *) state,
+        4
+    );
+
+    Atom type = XInternAtom(settings.dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", 0);
+
+    XChangeProperty(
+        settings.dpy,
+        settings.win,
+        XInternAtom(settings.dpy, "_NET_WM_WINDOW_TYPE", 1),
+        XA_ATOM,
+        32,
+        PropModeReplace,
+        (unsigned char *) &type,
+        1
+    );
+
+    XMapWindow(settings.dpy, settings.win);
+    XLowerWindow(settings.dpy, settings.win);
+    XSync(settings.dpy, settings.win);
+
     getMonitors();
     initOpengl();
+
+    return 1;
 }
 
 void gotsig(int signum)
@@ -310,7 +426,7 @@ void update()
 
     drawPlanes();
 
-    glXSwapBuffers(settings.dpy, settings.wid);
+    glXSwapBuffers(settings.dpy, settings.win);
 
     if (settings.fading) {
         float current_time = getTime();
@@ -389,7 +505,7 @@ void ThrowWandException(MagickWand *wand)
 
     description = MagickGetException(wand, &severity);
     fprintf(stderr, "%s %s %lu %s\n", GetMagickModule(), description);
-    description = (char *) MagickRelinquishMemory(description);
+    MagickRelinquishMemory(description);
     exit(-1);
 }
 
@@ -583,7 +699,6 @@ int main(int argc, char *argv[])
     settings.idle = DEFAULT_IDLE_TIME;
 
     static const struct option longOpts[] = {
-        { "wid", required_argument, 0, 'w' },
         { "path", required_argument, 0, 'p' },
         { "fade", required_argument, 0, 'f' },
         { "idle", no_argument, 0, 'i' },
@@ -594,13 +709,10 @@ int main(int argc, char *argv[])
     int longIndex = 0;
 
     while (
-        (c = getopt_long(argc, argv, "w:p:f:ih", longOpts, &longIndex)) != -1
+        (c = getopt_long(argc, argv, "p:f:ih", longOpts, &longIndex)) != -1
     ) {
 
         switch (c) {
-            case 'w':
-                sscanf(optarg, "%x", &settings.wid);
-                break;
 
             case 'f':
                 sscanf(optarg, "%d", &settings.fade);
@@ -616,7 +728,6 @@ int main(int argc, char *argv[])
 
             case 'h':
                 printf("Usage: %s [options]\n", argv[0]);
-                printf("\t-w, wid \t: window id\n");
                 printf("\t-p, path\t: wallpapers path\n");
                 printf("\t-f, fade\t: fade speed (default 3)\n");
                 printf("\t-i, idle\t: idle time (default 3)\n");
@@ -635,12 +746,12 @@ int main(int argc, char *argv[])
         strlcat(settings.path, "/*.{jpg,png}", sizeof(settings.path));
     }
 
-    init();
+    if (init(argc, argv)) {
+        randomImages();
 
-    randomImages();
-
-    while (settings.running) {
-        update();
+        while (settings.running) {
+            update();
+        }
     }
 
     shutdown();
