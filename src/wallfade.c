@@ -406,7 +406,7 @@ void drawPlanes()
                 drawPlane(
                     &settings.planes[i],
                     settings.planes[i].back,
-                    alpha
+                    1.0f
                 );
                 drawPlane(
                     &settings.planes[i],
