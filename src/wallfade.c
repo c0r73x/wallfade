@@ -17,15 +17,15 @@
 #include <sys/time.h>               // for CLOCK_MONOTONIC
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
-#include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
-#include "magick/constitute.h"      // for ::CharPixel
-#include "magick/exception.h"       // for ExceptionType
-#include "magick/geometry.h"        // for ::CenterGravity
-#include "magick/log.h"             // for GetMagickModule
-#include "magick/magick-type.h"     // for ::MagickFalse
-#include "magick/resample.h"        // for ::LanczosFilter
-#include "wand/magick-image.h"      // for MagickExportImagePixels, MagickGe...
-#include "wand/magick-property.h"   // for MagickSetGravity
+#include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
+#include <MagickCore/constitute.h>  // for ::CharPixel
+#include <MagickCore/exception.h>   // for ExceptionType
+#include <MagickCore/geometry.h>    // for ::CenterGravity
+#include <MagickCore/log.h>         // for GetMagickModule
+#include <MagickCore/magick-type.h> // for ::MagickFalse
+#include <MagickCore/resample.h>    // for ::LanczosFilter
+#include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
+#include <MagickWand/magick-property.h> // for MagickSetGravity
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_SPEED 3
@@ -532,44 +532,46 @@ void ThrowWandException(MagickWand *wand)
 
 MagickWand *doMagick(const char *current, int width, int height)
 {
-    MagickWand *iwand = NewMagickWand();
+    MagickWand *wand = NewMagickWand();
 
-    int status = MagickReadImage(iwand, current);
-
-    if (status == MagickFalse) {
-        ThrowWandException(iwand);
-    }
-
-    int orig_height = MagickGetImageHeight(iwand);
-    int orig_width = MagickGetImageWidth(iwand);
-
-    status = MagickSetGravity(iwand, CenterGravity);
-
-    if (status == MagickFalse) {
-        ThrowWandException(iwand);
-    }
-
-    char crop[256];
-
-    if (orig_width < orig_height) {
-        double aspect = (double)height / (double)width;
-        sprintf(crop, "%dx%d+0+0", orig_width, (int)(orig_width * aspect));
-    } else  {
-        double aspect = (double)width / (double)height;
-        sprintf(crop, "%dx%d+0+0", (int)(orig_height * aspect), orig_height);
-    }
-
-    MagickWand *wand = MagickTransformImage(iwand, crop, "");
-
-    MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
+    int status = MagickReadImage(wand, current);
 
     if (status == MagickFalse) {
         ThrowWandException(wand);
     }
 
-    //printf("%s %dx%d\n", current, orig_width, orig_height);
+    int orig_height = MagickGetImageHeight(wand);
+    int orig_width = MagickGetImageWidth(wand);
 
-    DestroyMagickWand(iwand);
+    status = MagickSetImageGravity(wand, CenterGravity);
+
+    if (status == MagickFalse) {
+        ThrowWandException(wand);
+    }
+
+    int newheight, newwidth;
+
+    if (orig_width < orig_height) {
+        double aspect = (double)height / (double)width;
+        newwidth = orig_width;
+        newheight = (int)(orig_width * aspect);
+    } else  {
+        double aspect = (double)width / (double)height;
+        newwidth = (int)(orig_height * aspect);
+        newheight = orig_height;
+    }
+
+    status = MagickCropImage(wand, newwidth, newheight, 0, 0);
+
+    if (status == MagickFalse) {
+        ThrowWandException(wand);
+    }
+
+    MagickResizeImage(wand, width, height, GaussianFilter);
+
+    if (status == MagickFalse) {
+        ThrowWandException(wand);
+    }
 
     return wand;
 }
