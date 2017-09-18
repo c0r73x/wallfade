@@ -540,25 +540,24 @@ MagickWand *doMagick(const char *current, int width, int height)
         ThrowWandException(wand);
     }
 
-    int orig_height = MagickGetImageHeight(wand);
-    int orig_width = MagickGetImageWidth(wand);
-
     status = MagickSetImageGravity(wand, CenterGravity);
 
     if (status == MagickFalse) {
         ThrowWandException(wand);
     }
 
-    int newheight, newwidth;
+    int orig_height = MagickGetImageHeight(wand);
+    int orig_width = MagickGetImageWidth(wand);
+
+    int newheight = orig_height;
+    int newwidth = orig_width;
 
     if (orig_width < orig_height) {
         double aspect = (double)height / (double)width;
-        newwidth = orig_width;
         newheight = (int)(orig_width * aspect);
     } else  {
         double aspect = (double)width / (double)height;
         newwidth = (int)(orig_height * aspect);
-        newheight = orig_height;
     }
 
     status = MagickCropImage(wand, newwidth, newheight, 0, 0);
