@@ -1,7 +1,7 @@
 #include <GL/gl.h>                  // for glColor4f, glTexCoord2f, glVertex2i
 #include <GL/glx.h>                 // for glXChooseVisual, glXCreateContext
-#include <X11/Xatom.h>              // for XA_ATOM
 #include <X11/X.h>                  // for None, Window
+#include <X11/Xatom.h>              // for XA_ATOM
 #include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
 #include <X11/Xutil.h>              // for XVisualInfo
 #include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
@@ -17,15 +17,29 @@
 #include <sys/time.h>               // for CLOCK_MONOTONIC
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
-#include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
-#include <MagickCore/constitute.h>  // for ::CharPixel
-#include <MagickCore/exception.h>   // for ExceptionType
-#include <MagickCore/geometry.h>    // for ::CenterGravity
-#include <MagickCore/log.h>         // for GetMagickModule
-#include <MagickCore/magick-type.h> // for ::MagickFalse
-#include <MagickCore/resample.h>    // for ::LanczosFilter
-#include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
-#include <MagickWand/magick-property.h> // for MagickSetGravity
+
+#define ImageMagick_MajorVersion @ImageMagick_MajorVersion@ 
+#if ImageMagick_MajorVersion < 7
+    #include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
+    #include <magick/constitute.h>      // for ::CharPixel
+    #include <magick/exception.h>       // for ExceptionType
+    #include <magick/geometry.h>        // for ::CenterGravity
+    #include <magick/log.h>             // for GetMagickModule
+    #include <magick/magick-type.h>     // for ::MagickFalse
+    #include <magick/resample.h>        // for ::LanczosFilter
+    #include <wand/magick-image.h>      // for MagickExportImagePixels, MagickGe...
+    #include <wand/magick-property.h>   // for MagickSetGravity
+#else
+    #include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
+    #include <MagickCore/constitute.h>  // for ::CharPixel
+    #include <MagickCore/exception.h>   // for ExceptionType
+    #include <MagickCore/geometry.h>    // for ::CenterGravity
+    #include <MagickCore/log.h>         // for GetMagickModule
+    #include <MagickCore/magick-type.h> // for ::MagickFalse
+    #include <MagickCore/resample.h>    // for ::LanczosFilter
+    #include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
+    #include <MagickWand/magick-property.h> // for MagickSetGravity
+#endif
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_SPEED 3
@@ -94,7 +108,7 @@ MagickWand *doMagick(const char *current, int width, int height);
 void loadTexture(const char *current, uint32_t *id, int width, int height);
 void randomImage(uint32_t *side, struct Plane *plane, const char *not,
                  int monitor);
-void randomImages(int montior);
+void randomImages(int monitor);
 int parsePaths(char *paths);
 
 Window *findDesktop()
@@ -102,13 +116,12 @@ Window *findDesktop()
     unsigned int n;
     Window troot, parent, *children;
     char *name;
-    int status;
     XWindowAttributes attrs;
 
     XQueryTree(settings.dpy, settings.root, &troot, &parent, &children, &n);
 
     for (unsigned int i = 0; i < n; i++) {
-        status = XFetchName(settings.dpy, children[i], &name);
+        int status = XFetchName(settings.dpy, children[i], &name);
         status |= XGetWindowAttributes(settings.dpy, children[i], &attrs);
 
         if ((status != 0) && (NULL != name)) {
@@ -566,7 +579,11 @@ MagickWand *doMagick(const char *current, int width, int height)
         ThrowWandException(wand);
     }
 
-    MagickResizeImage(wand, width, height, GaussianFilter);
+    #if ImageMagick_MajorVersion < 7
+        MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
+    #else
+        MagickResizeImage(wand, width, height, GaussianFilter);
+    #endif
 
     if (status == MagickFalse) {
         ThrowWandException(wand);
@@ -635,7 +652,7 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
         int bkrand = 0;
 
         do {
-            bkrand = rand() % settings.nfiles[monitor];
+            bkrand = random() % settings.nfiles[monitor];
         } while (
             strcmp(files[bkrand], not) == 0 &&
             settings.nfiles[monitor] != 1
@@ -686,12 +703,13 @@ int parsePaths(char *paths)
         settings.paths[i].path[0] = 0;
     }
 
-    char *p = 0;
-    char *m = 0;
+    char* p = 0;
 
     char default_path[PATH_MAX] = {0};
 
     while ((p = strsep(&paths, ",")) != NULL) {
+        char* m = 0;
+
         if ((m = strsep(&p, ":")) != NULL && p != NULL) {
             int monitor = atoi(m);
 
@@ -790,18 +808,21 @@ int main(int argc, char *argv[])
     int longIndex = 0;
     char paths[PATH_MAX * 10];
 
-    while (
-        (c = getopt_long(argc, argv, "p:f:i:h", longOpts, &longIndex)) != -1
-    ) {
-
+    while ((c = getopt_long(
+        argc,
+        argv,
+        "p:f:i:h",
+        longOpts,
+        &longIndex
+    )) != -1) {
         switch (c) {
 
             case 'f':
-                sscanf(optarg, "%d", &settings.fade);
+                settings.fade = strtol(optarg, NULL, 10);
                 break;
 
             case 'i':
-                sscanf(optarg, "%d", &settings.idle);
+                settings.idle = strtol(optarg, NULL, 10);
                 break;
 
             case 'p':

@@ -19,10 +19,6 @@ endif()
 
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16")
 
-set(COMMON_SRC
-    "wallfade.c"
-    )
-
 include_directories(
     "."
     ${ImageMagick_INCLUDE_DIRS}
@@ -31,9 +27,18 @@ include_directories(
     ${OPENGL_INCLUDE_DIR}
     )
 
-message("magic:${ImageMagick_INCLUDE_DIRS} ${ImageMagick_FOUND}")
-set(CMAKE_CXX_STANDARD 11)
+message("ImageMagick:${ImageMagick_INCLUDE_DIRS} ${ImageMagick_FOUND}")
 set(CMAKE_C_STANDARD 11)
+
+string(SUBSTRING ${ImageMagick_VERSION_STRING} 0 1 ImageMagick_MajorVersion)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/wallfade.c.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/wallfade.c"
+    )
+
+set(COMMON_SRC
+    "${CMAKE_CURRENT_BINARY_DIR}/wallfade.c"
+    )
 
 add_executable(${CMAKE_PROJECT_NAME} ${COMMON_SRC})
 
@@ -44,6 +49,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${OPENGL_LIBRARIES}
     bsd
     )
+
 install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION bin)
 
 # uninstall target
