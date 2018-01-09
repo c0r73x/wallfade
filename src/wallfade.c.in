@@ -80,8 +80,6 @@ struct _settings {
     char overlay_output[PATH_MAX];
 
     int base;
-    int running;
-    int fading;
 
     float seconds;
 
@@ -93,7 +91,10 @@ struct _settings {
 
     int fade;
     int idle;
+
     bool enable_overlay;
+    bool running;
+    bool fading;
 
     struct Plane *planes;
     struct Plane overlay_plane;
@@ -410,7 +411,7 @@ int init(int argc, char **argv)
 
 void gotsig(int signum)
 {
-    settings.running = 0;
+    settings.running = false;
 }
 
 void shutdown()
@@ -463,30 +464,32 @@ void drawPlanes()
 {
     static float alpha = 0.0f;
 
-    alpha += settings.fade * settings.seconds;
+    if (settings.fading) {
+        alpha += settings.fade * settings.seconds;
 
-    if (alpha > 1.0f) {
-        settings.fading = 0;
+        if (alpha > 1.0f) {
+            settings.fading = false;
 
-        for (int i = 0; i < settings.nmon; i++) {
-            uint32_t tmp = settings.planes[i].front;
-            settings.planes[i].front = settings.planes[i].back;
-            strlcpy(
-                settings.planes[i].front_path,
-                settings.planes[i].back_path,
-                sizeof(settings.planes[i].front_path)
-            );
-            settings.planes[i].back = tmp;
+            for (int i = 0; i < settings.nmon; i++) {
+                uint32_t tmp = settings.planes[i].front;
+                settings.planes[i].front = settings.planes[i].back;
+                strlcpy(
+                    settings.planes[i].front_path,
+                    settings.planes[i].back_path,
+                    sizeof(settings.planes[i].front_path)
+                );
+                settings.planes[i].back = tmp;
 
-            randomImage(
-                &settings.planes[i].back,
-                &settings.planes[i],
-                settings.planes[i].front_path,
-                i
-            );
+                randomImage(
+                    &settings.planes[i].back,
+                    &settings.planes[i],
+                    settings.planes[i].front_path,
+                    i
+                );
+            }
+
+            alpha = 0.0f;
         }
-
-        alpha = 0.0f;
     }
 
     for (int i = 0; i < settings.nmon; i++) {
@@ -635,8 +638,11 @@ void drawOverlay()
 void update()
 {
     static float last_time = 0;
+    static float timer = 0;
 
-    XLockDisplay(settings.dpy);
+    if (settings.enable_overlay) {
+        XLockDisplay(settings.dpy);
+    }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -651,20 +657,22 @@ void update()
 
     glXSwapBuffers(settings.dpy, settings.win);
 
-    XUnlockDisplay(settings.dpy);
-
-    if (settings.fading) {
-        float current_time = getTime();
-        settings.seconds = (current_time - last_time) * 0.0001f;
-        last_time = current_time;
-
-        usleep(100000);
-    } else {
-        usleep(settings.idle * 1000000);
-
-        settings.fading = 1;
-        last_time = getTime();
+    if (settings.enable_overlay) {
+        XUnlockDisplay(settings.dpy);
     }
+
+    float current_time = getTime();
+    settings.seconds = (current_time - last_time) * 0.001f;
+
+    last_time = current_time;
+    timer += settings.seconds;
+
+    if (timer >= settings.idle) {
+        settings.fading = true;
+        timer = 0;
+    }
+
+    usleep(50000);
 }
 
 char **getFiles(int monitor, int *total_files)
@@ -949,7 +957,7 @@ int parsePaths(char *paths)
                     stderr,
                     "Tried to set default path but none was specified!\n"
                 );
-                settings.running = 0;
+                settings.running = false;
                 return 0;
             }
         }
@@ -1009,8 +1017,8 @@ int main(int argc, char *argv[])
     signal(SIGTERM, gotsig);
     signal(SIGQUIT, gotsig);
 
-    settings.running = 1;
-    settings.fading = 0;
+    settings.running = true;
+    settings.fading = false;
     settings.fade = DEFAULT_FADE_SPEED;
     settings.idle = DEFAULT_IDLE_TIME;
     settings.planes = NULL;
