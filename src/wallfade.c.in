@@ -4,12 +4,15 @@
 #include <X11/Xatom.h>              // for XA_ATOM
 #include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
 #include <X11/Xutil.h>              // for XVisualInfo
+#include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
 #include <bsd/string.h>             // for strlcpy, strlcat
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
 #include <limits.h>                 // for PATH_MAX
+#include <pthread.h>
 #include <signal.h>                 // for signal, SIGINT, SIGKILL, SIGQUIT
+#include <stdbool.h>
 #include <stdint.h>                 // for uint32_t
 #include <stdio.h>                  // for fprintf, NULL, printf, stderr
 #include <stdlib.h>                 // for exit, free, malloc, rand, realpath
@@ -61,6 +64,11 @@ struct Plane {
     char back_path[PATH_MAX];
 };
 
+struct OpenGL {
+    GLXContext ctx;
+    GLXContext thread_ctx;
+};
+
 struct _settings {
     Display *dpy;
     Screen *scr;
@@ -68,12 +76,16 @@ struct _settings {
     Window root;
     Window desktop;
     Window win;
+    Window overlay;
+    char overlay_output[PATH_MAX];
 
+    int base;
     int running;
     int fading;
 
     float seconds;
 
+    uint32_t overlay_id;
     uint32_t screen;
 
     int nmon;
@@ -81,14 +93,15 @@ struct _settings {
 
     int fade;
     int idle;
+    bool enable_overlay;
 
     struct Plane *planes;
+    struct Plane overlay_plane;
     struct Path *paths;
-} settings;
+    struct OpenGL opengl;
+} static settings;
 
-struct _opengl {
-    GLXContext ctx;
-} opengl;
+pthread_t thread;
 
 Window *findDesktop();
 float getTime();
@@ -110,6 +123,8 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
                  int monitor);
 void randomImages(int monitor);
 int parsePaths(char *paths);
+void *getOverlay(void *args);
+void drawOverlay();
 
 Window *findDesktop()
 {
@@ -196,14 +211,19 @@ void getMonitors()
 
 void initOpengl()
 {
-    opengl.ctx = glXCreateContext(settings.dpy, settings.vi, NULL, GL_TRUE);
+    settings.opengl.ctx = glXCreateContext(
+        settings.dpy,
+        settings.vi,
+        NULL,
+        GL_TRUE
+    );
 
-    if (!opengl.ctx) {
+    if (!settings.opengl.ctx) {
         fprintf(stderr, "Error: glXCreateContext failed\n");
         exit(-1);
     }
 
-    glXMakeCurrent(settings.dpy, settings.win, opengl.ctx);
+    glXMakeCurrent(settings.dpy, settings.win, settings.opengl.ctx);
 
     printf("GL_RENDERER = %s\n", (char *) glGetString(GL_RENDERER));
 
@@ -220,6 +240,10 @@ void initOpengl()
     glViewport(0, 0, settings.scr->width, settings.scr->height);
 
     glClearColor(0, 0, 0, 1);
+
+    if (settings.enable_overlay) {
+        pthread_create(&thread, NULL, getOverlay, &settings);
+    }
 }
 
 int init(int argc, char **argv)
@@ -252,7 +276,7 @@ int init(int argc, char **argv)
 
     settings.root = RootWindow(settings.dpy, settings.screen);
 
-    XSetWindowAttributes attr;
+    XSetWindowAttributes attr = {0};
     attr.override_redirect = 1;
 
     Window *w = findDesktop();
@@ -270,6 +294,40 @@ int init(int argc, char **argv)
                        CWOverrideRedirect,
                        &attr
                    );
+
+    if (settings.enable_overlay) {
+        int br;
+        XCompositeQueryExtension(settings.dpy, &settings.base, &br);
+
+        attr.override_redirect = 0;
+        attr.border_pixel = 0;
+        attr.background_pixel = 0;
+
+        settings.overlay = XCreateWindow(
+                               settings.dpy,
+                               settings.root,
+                               0,
+                               0,
+                               settings.scr->width,
+                               settings.scr->height,
+                               0,
+                               CopyFromParent,
+                               InputOutput,
+                               CopyFromParent,
+                               CWBorderPixel | CWBackPixel | CWOverrideRedirect,
+                               &attr
+                           );
+
+        XCompositeRedirectWindow(
+            settings.dpy,
+            settings.overlay,
+            CompositeRedirectAutomatic
+        );
+
+        FILE *f = fopen(settings.overlay_output, "w");
+        fprintf(f, "%lu", settings.overlay);
+        fclose(f);
+    }
 
     XSizeHints xsh;
     xsh.flags  = PSize | PPosition;
@@ -291,6 +349,7 @@ int init(int argc, char **argv)
         &xwmh,
         NULL
     );
+
     Atom state[4];
 
     state[0] = XInternAtom(settings.dpy, "_NET_WM_STATE_BELOW", 0);
@@ -322,6 +381,23 @@ int init(int argc, char **argv)
         1
     );
 
+    if (settings.enable_overlay) {
+        XChangeProperty(
+            settings.dpy,
+            settings.overlay,
+            XInternAtom(settings.dpy, "_NET_WM_WINDOW_TYPE", 1),
+            XA_ATOM,
+            32,
+            PropModeReplace,
+            (unsigned char *) &type,
+            1
+        );
+
+        XMapWindow(settings.dpy, settings.overlay);
+        XLowerWindow(settings.dpy, settings.overlay);
+        XSync(settings.dpy, settings.overlay);
+    }
+
     XMapWindow(settings.dpy, settings.win);
     XLowerWindow(settings.dpy, settings.win);
     XSync(settings.dpy, settings.win);
@@ -347,7 +423,7 @@ void shutdown()
         free(settings.paths);
     }
 
-    glXDestroyContext(settings.dpy, opengl.ctx);
+    glXDestroyContext(settings.dpy, settings.opengl.ctx);
 
     MagickWandTerminus();
 }
@@ -445,9 +521,122 @@ void drawPlanes()
     }
 }
 
+void *getOverlay(void *args)
+{
+    struct _settings *settings = (struct _settings *)args;
+
+    XWindowAttributes attr = {0};
+    XGetWindowAttributes(settings->dpy, settings->overlay, &attr);
+
+    settings->overlay_plane.x = 0;
+    settings->overlay_plane.y = 0;
+    settings->overlay_plane.width = attr.width;
+    settings->overlay_plane.height = attr.height;
+
+    int img_size = attr.width * attr.height * 4;
+
+    unsigned char *data = malloc(img_size);
+
+    settings->opengl.thread_ctx = glXCreateContext(
+        settings->dpy,
+        settings->vi,
+        settings->opengl.ctx,
+        GL_TRUE
+    );
+
+    glXMakeCurrent(
+        settings->dpy,
+        settings->overlay,
+        settings->opengl.thread_ctx
+    );
+
+    glGenTextures(1, &settings->overlay_id);
+
+    while (settings->running) {
+        XLockDisplay(settings->dpy);
+
+        Pixmap pm = XCompositeNameWindowPixmap(
+            settings->dpy,
+            settings->overlay
+        );
+
+        XFlush(settings->dpy);
+
+        XImage *img = XGetImage(
+                          settings->dpy,
+                          pm,
+                          0,
+                          0,
+                          attr.width,
+                          attr.height,
+                          AllPlanes,
+                          ZPixmap
+                      );
+
+        if (img == NULL) {
+            fprintf(stderr, "ximage could not be created.\n");
+        } else {
+            int i = 0;
+
+            #pragma omp parallel for private(i)
+            for (i = 0; i < img_size; i += 4) {
+                data[i] = img->data[i];
+                data[i + 1] = img->data[i + 1];
+                data[i + 2] = img->data[i + 2];
+
+                if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0) {
+                    data[i + 3] = 0;
+                } else {
+                    data[i + 3] = 255;
+                }
+            }
+
+            glBindTexture(GL_TEXTURE_2D, settings->overlay_id);
+
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, attr.width, attr.height, 0,
+                    GL_BGRA, GL_UNSIGNED_BYTE, (void *)(&(data[0])));
+
+            glBindTexture(GL_TEXTURE_2D, 0);
+            XDestroyImage(img);
+        }
+
+        XFreePixmap(settings->dpy, pm);
+        XUnlockDisplay(settings->dpy);
+
+        usleep(100000);
+    }
+
+    glXDestroyContext(settings->dpy, settings->opengl.thread_ctx);
+    glDeleteTextures(1, &settings->overlay_id);
+
+    free(data);
+}
+
+void drawOverlay()
+{
+    glFinish();
+
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0);
+
+    glBindTexture(GL_TEXTURE_2D, settings.overlay_id);
+
+    drawPlane(&settings.overlay_plane, settings.overlay_id, 1);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glDisable(GL_ALPHA_TEST);
+}
+
 void update()
 {
     static float last_time = 0;
+
+    XLockDisplay(settings.dpy);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -456,14 +645,20 @@ void update()
 
     drawPlanes();
 
+    if (settings.enable_overlay) {
+        drawOverlay();
+    }
+
     glXSwapBuffers(settings.dpy, settings.win);
+
+    XUnlockDisplay(settings.dpy);
 
     if (settings.fading) {
         float current_time = getTime();
         settings.seconds = (current_time - last_time) * 0.0001f;
         last_time = current_time;
 
-        usleep(50000);
+        usleep(100000);
     } else {
         usleep(settings.idle * 1000000);
 
@@ -580,9 +775,9 @@ MagickWand *doMagick(const char *current, int width, int height)
     }
 
     #if ImageMagick_MajorVersion < 7
-        MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
+    MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
     #else
-        MagickResizeImage(wand, width, height, GaussianFilter);
+    MagickResizeImage(wand, width, height, GaussianFilter);
     #endif
 
     if (status == MagickFalse) {
@@ -779,6 +974,23 @@ int parsePaths(char *paths)
     return 1;
 }
 
+void help(const char *filename)
+{
+    printf("Usage: %s -p path [options]\n", filename);
+    printf("\t-f, fade   \t: fade speed (default 3)\n");
+    printf("\t-i, idle   \t: idle time (default 3)\n");
+    printf("\t-p, paths  \t: wallpapers paths.\n");
+    printf("\t           \t  use monitor:path, if no monitor is\n");
+    printf("\t           \t  specified the path will be used as\n");
+    printf("\t           \t  the default path\n\n");
+    printf("\t           \t  example: -p 0:path,1:path,path\n\n");
+    printf("\t-o, overlay\t: create overlay window (for Conky etc.)\n");
+    printf("\t           \t  outputs overlay id to path\n\n");
+    printf("\t           \t  example: -o path\n\n");
+    printf("\t-h, help   \t: help\n");
+    printf("\n");
+}
+
 int main(int argc, char *argv[])
 {
     struct timespec ts;
@@ -805,6 +1017,7 @@ int main(int argc, char *argv[])
     settings.paths = NULL;
 
     static const struct option longOpts[] = {
+        { "overlay", required_argument, 0, 'o' },
         { "paths", required_argument, 0, 'p' },
         { "fade", required_argument, 0, 'f' },
         { "idle", required_argument, 0, 'i' },
@@ -813,12 +1026,12 @@ int main(int argc, char *argv[])
     };
 
     int longIndex = 0;
-    char paths[PATH_MAX * 10];
+    char paths[PATH_MAX * 10] = {0};
 
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "p:f:i:h",
+                    "o:p:f:i:h",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -832,21 +1045,20 @@ int main(int argc, char *argv[])
                 settings.idle = strtol(optarg, NULL, 10);
                 break;
 
+            case 'o':
+                settings.enable_overlay = true;
+                strlcpy(settings.overlay_output, optarg, PATH_MAX * 10);
+
+                XInitThreads();
+
+                break;
+
             case 'p':
                 strlcpy(paths, optarg, PATH_MAX * 10);
                 break;
 
             case 'h':
-                printf("Usage: %s -p path [options]\n", argv[0]);
-                printf("\t-f, fade \t: fade speed (default 3)\n");
-                printf("\t-i, idle \t: idle time (default 3)\n");
-                printf("\t-p, paths\t: wallpapers paths.\n");
-                printf("\t         \t  use monitor:path, if no monitor is\n");
-                printf("\t         \t  specified the path will be used as\n");
-                printf("\t         \t  the default path\n\n");
-                printf("\t         \t  example: -p 0:path,1:path,path\n\n");
-                printf("\t-h, help \t: help\n");
-                printf("\n");
+                help(argv[0]);
                 return (0);
 
             default:
@@ -856,6 +1068,7 @@ int main(int argc, char *argv[])
 
     if (strlen(paths) == 0) {
         fprintf(stderr, "No paths specified!\n");
+        help(argv[0]);
     } else {
         if (init(argc, argv)) {
             if (parsePaths(paths)) {

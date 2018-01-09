@@ -17,6 +17,10 @@ if(USEOPENMP)
     endif()
 endif()
 
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
+
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16")
 
 include_directories(
@@ -24,6 +28,7 @@ include_directories(
     ${ImageMagick_INCLUDE_DIRS}
     ${X11_INCLUDE_DIR}
     ${X11_Xrandr_INCLUDE_PATH}
+    ${X11_Xcomposite_INCLUDE_PATH}
     ${OPENGL_INCLUDE_DIR}
     )
 
@@ -46,7 +51,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${ImageMagick_LIBRARIES}
     ${X11_LIBRARIES}
     ${X11_Xrandr_LIB}
+    ${X11_Xcomposite_LIB}
     ${OPENGL_LIBRARIES}
+    Threads::Threads
     bsd
     )
 
