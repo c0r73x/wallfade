@@ -45,7 +45,7 @@
 #endif
 
 #define DEFAULT_IDLE_TIME 3
-#define DEFAULT_FADE_SPEED 3
+#define DEFAULT_FADE_TIME 1
 
 struct Path {
     char path[PATH_MAX];
@@ -89,7 +89,7 @@ struct _settings {
     int nmon;
     int *nfiles;
 
-    int fade;
+    float fade;
     int idle;
 
     bool enable_overlay;
@@ -100,7 +100,7 @@ struct _settings {
     struct Plane overlay_plane;
     struct Path *paths;
     struct OpenGL opengl;
-} static settings;
+} settings;
 
 pthread_t thread;
 
@@ -610,7 +610,7 @@ void *getOverlay(void *args)
         XFreePixmap(settings->dpy, pm);
         XUnlockDisplay(settings->dpy);
 
-        usleep(100000);
+        usleep(500000);
     }
 
     glXDestroyContext(settings->dpy, settings->opengl.thread_ctx);
@@ -663,16 +663,17 @@ void update()
 
     float current_time = getTime();
     settings.seconds = (current_time - last_time) * 0.001f;
-
     last_time = current_time;
-    timer += settings.seconds;
 
     if (timer >= settings.idle) {
         settings.fading = true;
         timer = 0;
     }
 
-    usleep(50000);
+    if (!settings.fading) {
+        timer += settings.seconds;
+        usleep(50000);
+    }
 }
 
 char **getFiles(int monitor, int *total_files)
@@ -985,8 +986,8 @@ int parsePaths(char *paths)
 void help(const char *filename)
 {
     printf("Usage: %s -p path [options]\n", filename);
-    printf("\t-f, fade   \t: fade speed (default 3)\n");
-    printf("\t-i, idle   \t: idle time (default 3)\n");
+    printf("\t-f, fade   \t: fade time (default 1.0s)\n");
+    printf("\t-i, idle   \t: idle time (default 3s)\n");
     printf("\t-p, paths  \t: wallpapers paths.\n");
     printf("\t           \t  use monitor:path, if no monitor is\n");
     printf("\t           \t  specified the path will be used as\n");
@@ -1017,9 +1018,10 @@ int main(int argc, char *argv[])
     signal(SIGTERM, gotsig);
     signal(SIGQUIT, gotsig);
 
+    settings.enable_overlay = false;
     settings.running = true;
     settings.fading = false;
-    settings.fade = DEFAULT_FADE_SPEED;
+    settings.fade = DEFAULT_FADE_TIME;
     settings.idle = DEFAULT_IDLE_TIME;
     settings.planes = NULL;
     settings.paths = NULL;
@@ -1046,7 +1048,7 @@ int main(int argc, char *argv[])
         switch (c) {
 
             case 'f':
-                settings.fade = strtol(optarg, NULL, 10);
+                settings.fade = 1.0f / strtof(optarg, NULL);
                 break;
 
             case 'i':
