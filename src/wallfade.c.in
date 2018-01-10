@@ -87,6 +87,7 @@ struct _settings {
 
     float fade;
     int idle;
+    int smoothfunction;
 
     bool running;
     bool conky_lower;
@@ -122,7 +123,8 @@ void randomImages(int monitor);
 int parsePaths(char *paths);
 int handler(Display *dpy, XErrorEvent *e);
 
-int handler(Display *dpy, XErrorEvent *e) {
+int handler(Display *dpy, XErrorEvent *e)
+{
     fprintf(stderr, "X Error code: %d\n", e->error_code);
     return 0;
 }
@@ -310,12 +312,13 @@ int init(int argc, char **argv)
 
         do {
             settings.conky = findConky();
-            if(settings.conky != 0) {
+
+            if (settings.conky != 0) {
                 break;
             }
 
             usleep(100000);
-        } while(1);
+        } while (1);
 
         printf("Found conky %lu\n", settings.conky);
         XLowerWindow(settings.dpy, settings.conky);
@@ -454,10 +457,28 @@ void drawPlane(struct Plane *plane, uint32_t texture, float alpha)
     glEnd();
 }
 
-float smoothstep(float min, float max, float val)
+float smooth(float min, float max, float val)
 {
-    float s = fmaxf(0, fminf(1, (val - min) / (max - min)));
-    return s * s * (3 - 2 * s);
+    float out = 0;
+
+    if (settings.smoothfunction == 1) {
+        out = val; // linear
+    } else {
+        float s = fmaxf(0, fminf(1, (val - min) / (max - min)));
+
+        switch (settings.smoothfunction) {
+            default:
+            case 2: // smoothstep
+                out = s * s * (3 - 2 * s);
+                break;
+
+            case 3: // smootherstep
+                out = s * s * (s * (s * 6 - 15) + 10);
+                break;
+        }
+    }
+
+    return out;
 }
 
 void drawPlanes()
@@ -465,7 +486,7 @@ void drawPlanes()
     static float alpha = 0.0f;
 
     if (settings.fading) {
-        alpha += smoothstep(0.f, 1.f, settings.fade * settings.seconds);
+        alpha += smooth(0.f, 1.f, settings.fade * settings.seconds);
 
         if (alpha > 1.0f) {
             settings.fading = false;
@@ -581,6 +602,7 @@ char **getFiles(int monitor, int *total_files)
         int nfiles = 0;
 
         #pragma omp parallel for private(i) reduction(+:nfiles)
+
         for (i = 0; i < globbuf.gl_pathc; i++) {
             char *file = realpath(globbuf.gl_pathv[i], NULL);
 
@@ -868,15 +890,22 @@ int parsePaths(char *paths)
 void help(const char *filename)
 {
     printf("Usage: %s -p path [options]\n", filename);
-    printf("\t-f, fade   \t: fade time (default 1.0s)\n");
-    printf("\t-i, idle   \t: idle time (default 3s)\n");
-    printf("\t-p, paths  \t: wallpapers paths.\n");
-    printf("\t           \t  use monitor:path, if no monitor is\n");
-    printf("\t           \t  specified the path will be used as\n");
-    printf("\t           \t  the default path\n\n");
-    printf("\t           \t  example: -p 0:path,1:path,path\n\n");
-    printf("\t-c, conky  \t: finds and lowers conky's window\n");
-    printf("\t-h, help   \t: help\n");
+    printf("    -f, fade       : fade time (default 1.0s)\n");
+    printf("    -i, idle       : idle time (default 3s)\n");
+    printf("    -s, smooth     : smoothing function to use when fading.\n");
+    printf("                       1: linear\n");
+    printf("                       2: smoothstep (default)\n");
+    printf("                       3: smootherstep\n");
+    printf("\n");            
+    printf("    -p, paths      : wallpapers paths.\n");
+    printf("                       use monitor:path, if no monitor is\n");
+    printf("                       specified the path will be used as\n");
+    printf("                       the default path\n");
+    printf("\n");            
+    printf("                       example: -p 0:path,1:path,path\n");
+    printf("\n");            
+    printf("    -c, conky      : finds and lowers conky's window\n");
+    printf("    -h, help       : help\n");
     printf("\n");
 }
 
@@ -898,6 +927,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, gotsig);
     signal(SIGQUIT, gotsig);
 
+    settings.smoothfunction = 2;
     settings.conky_lower = false;
     settings.running = true;
     settings.fading = false;
@@ -909,6 +939,7 @@ int main(int argc, char *argv[])
     static const struct option longOpts[] = {
         { "conky", required_argument, 0, 'c' },
         { "paths", required_argument, 0, 'p' },
+        { "smooth", required_argument, 0, 's' },
         { "fade", required_argument, 0, 'f' },
         { "idle", required_argument, 0, 'i' },
         { "help", no_argument, 0, 'h' },
@@ -937,6 +968,10 @@ int main(int argc, char *argv[])
 
             case 'c':
                 settings.conky_lower = true;
+                break;
+
+            case 's':
+                settings.smoothfunction = strtol(optarg, NULL, 10);
                 break;
 
             case 'p':
