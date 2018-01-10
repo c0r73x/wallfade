@@ -17,9 +17,9 @@ if(USEOPENMP)
     endif()
 endif()
 
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(Threads REQUIRED)
+# set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+# set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+# find_package(Threads REQUIRED)
 
 set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMAGICKCORE_HDRI_ENABLE=0 -DMAGICKCORE_QUANTUM_DEPTH=16")
 
@@ -53,8 +53,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${X11_Xrandr_LIB}
     ${X11_Xcomposite_LIB}
     ${OPENGL_LIBRARIES}
-    Threads::Threads
+    #    Threads::Threads
     bsd
+    m
     )
 
 install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION bin)

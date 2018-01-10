@@ -9,8 +9,9 @@
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
 #include <limits.h>                 // for PATH_MAX
+#include <tgmath.h>                 // for fmaxf, fminf
 #include <signal.h>                 // for signal, SIGINT, SIGKILL, SIGQUIT
-#include <stdbool.h>
+#include <stdbool.h>                // for bool
 #include <stdint.h>                 // for uint32_t
 #include <stdio.h>                  // for fprintf, NULL, printf, stderr
 #include <stdlib.h>                 // for exit, free, malloc, rand, realpath
@@ -453,12 +454,18 @@ void drawPlane(struct Plane *plane, uint32_t texture, float alpha)
     glEnd();
 }
 
+float smoothstep(float min, float max, float val)
+{
+    float s = fmaxf(0, fminf(1, (val - min) / (max - min)));
+    return s * s * (3 - 2 * s);
+}
+
 void drawPlanes()
 {
     static float alpha = 0.0f;
 
     if (settings.fading) {
-        alpha += settings.fade * settings.seconds;
+        alpha += smoothstep(0.f, 1.f, settings.fade * settings.seconds);
 
         if (alpha > 1.0f) {
             settings.fading = false;
