@@ -73,6 +73,7 @@ struct _settings {
     Window root;
     Window desktop;
     Window win;
+    Window conky;
 
     int base;
 
@@ -87,6 +88,7 @@ struct _settings {
     int idle;
 
     bool running;
+    bool conky_lower;
     bool fading;
 
     struct Plane *planes;
@@ -96,7 +98,8 @@ struct _settings {
 
 pthread_t thread;
 
-Window *findDesktop();
+Window findConky();
+Window findDesktop();
 float getTime();
 void getMonitors();
 void initOpengl();
@@ -116,8 +119,44 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
                  int monitor);
 void randomImages(int monitor);
 int parsePaths(char *paths);
+int handler(Display *dpy, XErrorEvent *e);
 
-Window *findDesktop()
+int handler(Display *dpy, XErrorEvent *e) {
+    fprintf(stderr, "X Error code: %d\n", e->error_code);
+    return 0;
+}
+
+Window findConky()
+{
+    unsigned int n;
+    Window troot, parent, *children;
+    char *name;
+    XWindowAttributes attrs;
+
+    XQueryTree(settings.dpy, settings.root, &troot, &parent, &children, &n);
+
+    for (unsigned int i = 0; i < n; i++) {
+        int status = XFetchName(settings.dpy, children[i], &name);
+        status |= XGetWindowAttributes(settings.dpy, children[i], &attrs);
+
+        if ((status != 0) && (NULL != name)) {
+            if ((!strncmp(name, "conky", 5))) {
+                XFree(children);
+                XFree(name);
+
+                return children[i];
+            }
+
+            if (name) {
+                XFree(name);
+            }
+        }
+    }
+
+    return 0;
+}
+
+Window findDesktop()
 {
     unsigned int n;
     Window troot, parent, *children;
@@ -141,7 +180,7 @@ Window *findDesktop()
                 XFree(children);
                 XFree(name);
 
-                return &children[i];
+                return children[i];
             }
 
             if (name) {
@@ -150,7 +189,7 @@ Window *findDesktop()
         }
     }
 
-    return &settings.root;
+    return settings.root;
 }
 
 float getTime()
@@ -244,6 +283,8 @@ int init(int argc, char **argv)
         return 0;
     }
 
+    XSetErrorHandler(handler);
+
     settings.scr = DefaultScreenOfDisplay(settings.dpy);
 
     if (settings.scr == NULL) {
@@ -263,13 +304,29 @@ int init(int argc, char **argv)
 
     settings.root = RootWindow(settings.dpy, settings.screen);
 
+    if (settings.conky_lower) {
+        printf("Waiting for conky...\n");
+
+        do {
+            settings.conky = findConky();
+            if(settings.conky != 0) {
+                break;
+            }
+
+            usleep(100000);
+        } while(1);
+
+        printf("Found conky %lu\n", settings.conky);
+        XLowerWindow(settings.dpy, settings.conky);
+    }
+
     XSetWindowAttributes attr = {0};
     attr.override_redirect = 1;
 
-    Window *w = findDesktop();
+    Window desktop = findDesktop();
     settings.win = XCreateWindow(
                        settings.dpy,
-                       *w,
+                       desktop,
                        0,
                        0,
                        settings.scr->width,
@@ -474,6 +531,7 @@ void update()
     drawPlanes();
 
     glXSwapBuffers(settings.dpy, settings.win);
+
     XFlush(settings.dpy);
 
     float current_time = getTime();
@@ -810,6 +868,7 @@ void help(const char *filename)
     printf("\t           \t  specified the path will be used as\n");
     printf("\t           \t  the default path\n\n");
     printf("\t           \t  example: -p 0:path,1:path,path\n\n");
+    printf("\t-c, conky  \t: finds and lowers conky's window\n");
     printf("\t-h, help   \t: help\n");
     printf("\n");
 }
@@ -832,6 +891,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, gotsig);
     signal(SIGQUIT, gotsig);
 
+    settings.conky_lower = false;
     settings.running = true;
     settings.fading = false;
     settings.fade = DEFAULT_FADE_TIME;
@@ -840,6 +900,7 @@ int main(int argc, char *argv[])
     settings.paths = NULL;
 
     static const struct option longOpts[] = {
+        { "conky", required_argument, 0, 'c' },
         { "paths", required_argument, 0, 'p' },
         { "fade", required_argument, 0, 'f' },
         { "idle", required_argument, 0, 'i' },
@@ -853,7 +914,7 @@ int main(int argc, char *argv[])
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:h",
+                    "o:p:f:i:hc",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -865,6 +926,10 @@ int main(int argc, char *argv[])
 
             case 'i':
                 settings.idle = strtol(optarg, NULL, 10);
+                break;
+
+            case 'c':
+                settings.conky_lower = true;
                 break;
 
             case 'p':
