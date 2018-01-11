@@ -483,12 +483,14 @@ float smooth(float min, float max, float val)
 
 void drawPlanes()
 {
-    static float alpha = 0.0f;
+    static float linear = 0.0f;
+    float alpha = 0.0f;
 
     if (settings.fading) {
-        alpha += smooth(0.f, 1.f, settings.fade * settings.seconds);
+        linear += settings.fade * settings.seconds;
+        alpha = smooth(0.0f,1.0f,linear);
 
-        if (alpha > 1.0f) {
+        if (linear > 1.0f) {
             settings.fading = false;
 
             for (int i = 0; i < settings.nmon; i++) {
@@ -509,6 +511,7 @@ void drawPlanes()
                 );
             }
 
+            linear = 0.0f;
             alpha = 0.0f;
         }
     }
@@ -896,14 +899,14 @@ void help(const char *filename)
     printf("                       1: linear\n");
     printf("                       2: smoothstep (default)\n");
     printf("                       3: smootherstep\n");
-    printf("\n");            
+    printf("\n");
     printf("    -p, paths      : wallpapers paths.\n");
     printf("                       use monitor:path, if no monitor is\n");
     printf("                       specified the path will be used as\n");
     printf("                       the default path\n");
-    printf("\n");            
+    printf("\n");
     printf("                       example: -p 0:path,1:path,path\n");
-    printf("\n");            
+    printf("\n");
     printf("    -c, conky      : finds and lowers conky's window\n");
     printf("    -h, help       : help\n");
     printf("\n");
@@ -952,7 +955,7 @@ int main(int argc, char *argv[])
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:hc",
+                    "o:p:f:i:hcs:",
                     longOpts,
                     &longIndex
                 )) != -1) {
