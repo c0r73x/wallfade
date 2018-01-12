@@ -1,13 +1,14 @@
 #define ImageMagick_MajorVersion @ImageMagick_MajorVersion@
 #define GraphicsMagick @GMAGICK@
 
-#ifdef GraphicsMagick
+#if GraphicsMagick == 1
     #include <magick/common.h>      // for ::MagickFalse
     #include <wand/magick_wand.h>   // for MagickWand, DestroyMagickWand
     #include <magick/error.h>       // for ExceptionType
     #include <magick/image.h>       // for ::CenterGravity, ::LanczosFilter
     #include <magick/draw.h>        // for DrawSetGravity
 #else
+    #undef GraphicsMagick
     #if ImageMagick_MajorVersion < 7
         #include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
         #include <magick/exception.h>       // for ExceptionType
