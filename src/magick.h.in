@@ -1,33 +1,32 @@
 #define ImageMagick_MajorVersion @ImageMagick_MajorVersion@
-#define GraphicsMagick @GMAGICK@
+#define UseGraphicsMagick @UseGraphicsMagick@
 
-#if GraphicsMagick == 1
+#if UseGraphicsMagick == 1
+    #define GraphicsMagick 1
+
     #include <magick/common.h>      // for ::MagickFalse
     #include <wand/magick_wand.h>   // for MagickWand, DestroyMagickWand
     #include <magick/error.h>       // for ExceptionType
     #include <magick/image.h>       // for ::CenterGravity, ::LanczosFilter
     #include <magick/draw.h>        // for DrawSetGravity
+#elif ImageMagick_MajorVersion < 7
+    #include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
+    #include <magick/exception.h>       // for ExceptionType
+    #include <magick/geometry.h>        // for ::CenterGravity
+    #include <magick/magick-type.h>     // for ::MagickFalse
+    #include <magick/resample.h>        // for ::LanczosFilter
+    #include <wand/magick-image.h>      // for MagickExportImagePixels, MagickGe...
+    #include <wand/magick-property.h>   // for MagickSetGravity
+    #include <magick/constitute.h>      // for ::CharPixel
+    #include <magick/log.h>             // for GetMagickModule
 #else
-    #undef GraphicsMagick
-    #if ImageMagick_MajorVersion < 7
-        #include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
-        #include <magick/exception.h>       // for ExceptionType
-        #include <magick/geometry.h>        // for ::CenterGravity
-        #include <magick/magick-type.h>     // for ::MagickFalse
-        #include <magick/resample.h>        // for ::LanczosFilter
-        #include <wand/magick-image.h>      // for MagickExportImagePixels, MagickGe...
-        #include <wand/magick-property.h>   // for MagickSetGravity
-        #include <magick/constitute.h>      // for ::CharPixel
-        #include <magick/log.h>             // for GetMagickModule
-    #else
-        #include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
-        #include <MagickCore/constitute.h>  // for ::CharPixel
-        #include <MagickCore/exception.h>   // for ExceptionType
-        #include <MagickCore/geometry.h>    // for ::CenterGravity
-        #include <MagickCore/log.h>         // for GetMagickModule
-        #include <MagickCore/magick-type.h> // for ::MagickFalse
-        #include <MagickCore/resample.h>    // for ::LanczosFilter
-        #include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
-        #include <MagickWand/magick-property.h> // for MagickSetGravity
-    #endif
+    #include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
+    #include <MagickCore/constitute.h>  // for ::CharPixel
+    #include <MagickCore/exception.h>   // for ExceptionType
+    #include <MagickCore/geometry.h>    // for ::CenterGravity
+    #include <MagickCore/log.h>         // for GetMagickModule
+    #include <MagickCore/magick-type.h> // for ::MagickFalse
+    #include <MagickCore/resample.h>    // for ::LanczosFilter
+    #include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
+    #include <MagickWand/magick-property.h> // for MagickSetGravity
 #endif

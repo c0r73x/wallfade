@@ -14,9 +14,6 @@ ifdef RELEASE
 	export RELEASE=1
 endif
 
-ifdef GMAGICK
-	GMAGICK="-DGMAGICK=1"
-endif
 ifdef PREFIX
 	CMAKE_PREFIX="-DCMAKE_INSTALL_PREFIX=$(shell readlink -f $(PREFIX))"
 endif
@@ -35,7 +32,6 @@ build/Makefile: src/CMakeLists.txt
 		cmake \
 		-DCMAKE_BUILD_TYPE=$(BUILD_INFO) \
 		-DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-		$(GMAGICK) \
 		"$(BASE_DIR)"/src \
 		 $(CMAKE_PREFIX)
 
