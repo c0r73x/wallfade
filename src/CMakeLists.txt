@@ -4,11 +4,21 @@ project(wallfade)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
-find_package(ImageMagick COMPONENTS MagickWand REQUIRED)
+option(GMAGICK "Use GraphicsMagick" OFF)
+if(GMAGICK)
+    find_package(GraphicsMagick COMPONENTS Magick REQUIRED)
+    set(ImageMagick_INCLUDE_DIRS ${MAGICK_INCLUDE_DIR})
+    set(ImageMagick_LIBRARIES ${MAGICK_LIBRARIES} ${MAGICKWAND_LIBRARIES})
+    set(ImageMagick_MajorVersion 5)
+else()
+    find_package(ImageMagick COMPONENTS MagickWand REQUIRED)
+    string(SUBSTRING ${ImageMagick_VERSION_STRING} 0 1 ImageMagick_MajorVersion)
+endif()
+
 find_package(X11 REQUIRED)
 find_package(OpenGL REQUIRED)
 
-option(USEOPENMP "enable openmp threading" ON)
+option(USEOPENMP "Enable OpenMP threading" ON)
 if(USEOPENMP)
     find_package(OpenMP)
     if (OPENMP_FOUND)
@@ -34,7 +44,6 @@ include_directories(
 
 set(CMAKE_C_STANDARD 11)
 
-string(SUBSTRING ${ImageMagick_VERSION_STRING} 0 1 ImageMagick_MajorVersion)
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/magick.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/magick.h"

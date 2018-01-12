@@ -257,7 +257,12 @@ void initOpengl()
 
 int init(int argc, char **argv)
 {
+    #ifdef GraphicsMagick
+    InitializeMagick(*argv);
+    #else
     MagickWandGenesis();
+    #endif
+    
 
     settings.dpy = XOpenDisplay(NULL);
 
@@ -404,7 +409,11 @@ void shutdown()
 
     glXDestroyContext(settings.dpy, settings.opengl.ctx);
 
+    #ifdef GraphicsMagick
+    DestroyMagick();
+    #else
     MagickWandTerminus();
+    #endif
 }
 
 void drawPlane(struct Plane *plane, uint32_t texture, float alpha)
@@ -631,7 +640,11 @@ void ThrowWandException(MagickWand *wand)
     ExceptionType severity;
 
     description = MagickGetException(wand, &severity);
+    #ifdef GraphicsMagick
+    fprintf(stderr, "%s %s %d %s\n", GetMagickModule(), description);
+    #else
     fprintf(stderr, "%s %s %lu %s\n", GetMagickModule(), description);
+    #endif
     MagickRelinquishMemory(description);
     exit(-1);
 }
@@ -682,7 +695,7 @@ MagickWand *doMagick(const char *current, int width, int height)
         ThrowWandException(wand);
     }
 
-    #if ImageMagick_MajorVersion < 7
+    #if ImageMagick_MajorVersion < 7 || GraphicsMagick
     MagickResizeImage(wand, width, height, GaussianFilter, 1.0);
     #else
     MagickResizeImage(wand, width, height, GaussianFilter);
@@ -700,6 +713,18 @@ void loadTexture(const char *current, uint32_t *id, int width, int height)
     MagickWand *wand = doMagick(current, width, height);
 
     unsigned char *data = malloc((width * height) * 3);
+    #ifdef GraphicsMagick
+    int status = MagickGetImagePixels(
+                     wand,
+                     0,
+                     0,
+                     width,
+                     height,
+                     "RGB",
+                     CharPixel,
+                     data
+                 );
+    #else
     int status = MagickExportImagePixels(
                      wand,
                      0,
@@ -710,6 +735,7 @@ void loadTexture(const char *current, uint32_t *id, int width, int height)
                      CharPixel,
                      data
                  );
+    #endif
 
     if (status == MagickFalse) {
         ThrowWandException(wand);

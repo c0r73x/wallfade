@@ -2,6 +2,7 @@ BASE_DIR=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 BUILD_TYPE=debug
 BUILD_INFO=Debug
+
 ifdef RELEASE_DBG_INFO
 	BUILD_TYPE=release_dbg_info
 	BUILD_INFO=RelWithDebInfo
@@ -13,6 +14,9 @@ ifdef RELEASE
 	export RELEASE=1
 endif
 
+ifdef GMAGICK
+	GMAGICK="-DGMAGICK=1"
+endif
 ifdef PREFIX
 	CMAKE_PREFIX="-DCMAKE_INSTALL_PREFIX=$(shell readlink -f $(PREFIX))"
 endif
@@ -31,6 +35,7 @@ build/Makefile: src/CMakeLists.txt
 		cmake \
 		-DCMAKE_BUILD_TYPE=$(BUILD_INFO) \
 		-DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+		$(GMAGICK) \
 		"$(BASE_DIR)"/src \
 		 $(CMAKE_PREFIX)
 
