@@ -58,6 +58,10 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     m
     )
 
+target_compile_options(${CMAKE_PROJECT_NAME} PUBLIC "-Werror")
+target_compile_options(${CMAKE_PROJECT_NAME} PUBLIC "-Wall")
+target_compile_options(${CMAKE_PROJECT_NAME} PUBLIC "-Wpedantic")
+
 install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION bin)
 
 # uninstall target

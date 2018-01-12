@@ -74,7 +74,6 @@ struct _settings {
     Window root;
     Window desktop;
     Window win;
-    Window conky;
 
     int base;
 
@@ -90,9 +89,10 @@ struct _settings {
     int smoothfunction;
 
     bool running;
-    bool conky_lower;
     bool fading;
     bool center;
+
+    char lower[PATH_MAX];
 
     struct Plane *planes;
     struct Path *paths;
@@ -101,7 +101,7 @@ struct _settings {
 
 pthread_t thread;
 
-Window findConky();
+Window findByClass(const char* classname);
 Window findDesktop();
 float getTime();
 void getMonitors();
@@ -130,7 +130,7 @@ int handler(Display *dpy, XErrorEvent *e)
     return 0;
 }
 
-Window findConky()
+Window findByClass(const char* classname)
 {
     unsigned int n;
     Window troot, parent, *children;
@@ -144,7 +144,7 @@ Window findConky()
         status |= XGetWindowAttributes(settings.dpy, children[i], &attrs);
 
         if ((status != 0) && (NULL != name)) {
-            if ((!strncmp(name, "conky", 5))) {
+            if ((!strncmp(name, classname, strlen(classname)))) {
                 XFree(children);
                 XFree(name);
 
@@ -308,21 +308,22 @@ int init(int argc, char **argv)
 
     settings.root = RootWindow(settings.dpy, settings.screen);
 
-    if (settings.conky_lower) {
-        printf("Waiting for conky...\n");
+    if (strlen(settings.lower)) {
+        printf("Waiting for %s...\n", settings.lower);
 
+        Window wid = 0;
         do {
-            settings.conky = findConky();
+            wid = findByClass(settings.lower);
 
-            if (settings.conky != 0) {
+            if (wid != 0) {
                 break;
             }
 
             usleep(100000);
         } while (1);
 
-        printf("Found conky %lu\n", settings.conky);
-        XLowerWindow(settings.dpy, settings.conky);
+        printf("Found %s (%lu)\n", settings.lower, wid);
+        XLowerWindow(settings.dpy, wid);
     }
 
     XSetWindowAttributes attr = {0};
@@ -484,10 +485,11 @@ float smooth(float min, float max, float val)
 
 void drawPlanes()
 {
-    static float linear = 0.0f;
     float alpha = 0.0f;
 
     if (settings.fading) {
+        static float linear = 0.0f;
+
         linear += settings.fade * settings.seconds;
         alpha = smooth(0.0f,1.0f,linear);
 
@@ -676,7 +678,6 @@ MagickWand *doMagick(const char *current, int width, int height)
 
     int newheight = orig_height;
     int newwidth = orig_width;
-    bool tallscreen = width < height;
     double screen_aspect = (double)width / (double)height;
     double image_aspect = (double)orig_width / (double)orig_height;
 
@@ -687,7 +688,13 @@ MagickWand *doMagick(const char *current, int width, int height)
     }
 
     if(settings.center) {
-        status = MagickCropImage(wand, newwidth, newheight, (orig_width - newwidth) / 2, (orig_height - newheight) / 2);
+        status = MagickCropImage(
+            wand,
+            newwidth,
+            newheight,
+            (orig_width - newwidth) / 2,
+            (orig_height - newheight) / 2
+        );
     } else {
         status = MagickCropImage(wand, newwidth, newheight, 0, 0);
     }
@@ -899,23 +906,23 @@ int parsePaths(char *paths)
 void help(const char *filename)
 {
     printf("Usage: %s -p path [options]\n", filename);
-    printf("    -f, fade       : fade time (default 1.0s)\n");
-    printf("    -i, idle       : idle time (default 3s)\n");
-    printf("    -s, smooth     : smoothing function to use when fading.\n");
-    printf("                       1: linear\n");
-    printf("                       2: smoothstep (default)\n");
-    printf("                       3: smootherstep\n");
+    printf("    -f, fade   : fade time (default 1.0s)\n");
+    printf("    -i, idle   : idle time (default 3s)\n");
+    printf("    -s, smooth : smoothing function to use when fading.\n");
+    printf("                   1: linear\n");
+    printf("                   2: smoothstep (default)\n");
+    printf("                   3: smootherstep\n");
     printf("\n");
-    printf("    -p, paths      : wallpapers paths.\n");
-    printf("                       use monitor:path, if no monitor is\n");
-    printf("                       specified the path will be used as\n");
-    printf("                       the default path\n");
+    printf("    -p, paths  : wallpapers paths.\n");
+    printf("                   use monitor:path, if no monitor is\n");
+    printf("                   specified the path will be used as\n");
+    printf("                   the default path\n");
     printf("\n");
-    printf("                       example: -p 0:path,1:path,path\n");
+    printf("                   example: -p 0:path,1:path,path\n");
     printf("\n");
-    printf("    -c, conky      : finds and lowers conky's window\n");
-    printf("    -C, center     : center wallpapers\n");
-    printf("    -h, help       : help\n");
+    printf("    -l, lower  : finds and lowers window by classname (e.g. Conky)\n");
+    printf("    -c, center : center wallpapers\n");
+    printf("    -h, help   : help\n");
     printf("\n");
 }
 
@@ -937,8 +944,9 @@ int main(int argc, char *argv[])
     signal(SIGTERM, gotsig);
     signal(SIGQUIT, gotsig);
 
+    memset(settings.lower, 0, PATH_MAX);
+
     settings.smoothfunction = 2;
-    settings.conky_lower = false;
     settings.center = false;
     settings.running = true;
     settings.fading = false;
@@ -948,8 +956,8 @@ int main(int argc, char *argv[])
     settings.paths = NULL;
 
     static const struct option longOpts[] = {
-        { "conky", required_argument, 0, 'c' },
-        { "center", required_argument, 0, 'C' },
+        { "lower", required_argument, 0, 'l' },
+        { "center", required_argument, 0, 'c' },
         { "paths", required_argument, 0, 'p' },
         { "smooth", required_argument, 0, 's' },
         { "fade", required_argument, 0, 'f' },
@@ -964,7 +972,7 @@ int main(int argc, char *argv[])
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:hcs:C",
+                    "o:p:f:i:hcs:l:",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -978,11 +986,11 @@ int main(int argc, char *argv[])
                 settings.idle = strtol(optarg, NULL, 10);
                 break;
 
-            case 'c':
-                settings.conky_lower = true;
+            case 'l':
+                strlcpy(settings.lower, optarg, PATH_MAX);
                 break;
 
-            case 'C':
+            case 'c':
                 settings.center = true;
                 break;
 
