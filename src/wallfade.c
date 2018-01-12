@@ -20,28 +20,7 @@
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
 
-#define ImageMagick_MajorVersion @ImageMagick_MajorVersion@
-#if ImageMagick_MajorVersion < 7
-    #include <wand/MagickWand.h>        // for MagickWand, DestroyMagickWand
-    #include <magick/constitute.h>      // for ::CharPixel
-    #include <magick/exception.h>       // for ExceptionType
-    #include <magick/geometry.h>        // for ::CenterGravity
-    #include <magick/log.h>             // for GetMagickModule
-    #include <magick/magick-type.h>     // for ::MagickFalse
-    #include <magick/resample.h>        // for ::LanczosFilter
-    #include <wand/magick-image.h>      // for MagickExportImagePixels, MagickGe...
-    #include <wand/magick-property.h>   // for MagickSetGravity
-#else
-    #include <MagickWand/MagickWand.h>  // for MagickWand, DestroyMagickWand
-    #include <MagickCore/constitute.h>  // for ::CharPixel
-    #include <MagickCore/exception.h>   // for ExceptionType
-    #include <MagickCore/geometry.h>    // for ::CenterGravity
-    #include <MagickCore/log.h>         // for GetMagickModule
-    #include <MagickCore/magick-type.h> // for ::MagickFalse
-    #include <MagickCore/resample.h>    // for ::LanczosFilter
-    #include <MagickWand/magick-image.h>    // for MagickExportImagePixels, MagickGe...
-    #include <MagickWand/magick-property.h> // for MagickSetGravity
-#endif
+#include "magick.h"
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_TIME 1

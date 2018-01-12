@@ -32,12 +32,16 @@ include_directories(
     ${OPENGL_INCLUDE_DIR}
     )
 
-message("ImageMagick:${ImageMagick_INCLUDE_DIRS} ${ImageMagick_FOUND}")
 set(CMAKE_C_STANDARD 11)
 
 string(SUBSTRING ${ImageMagick_VERSION_STRING} 0 1 ImageMagick_MajorVersion)
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/wallfade.c.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/magick.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/magick.h"
+    )
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/wallfade.c"
     "${CMAKE_CURRENT_BINARY_DIR}/wallfade.c"
     )
 
