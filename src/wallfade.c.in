@@ -92,6 +92,7 @@ struct _settings {
     bool running;
     bool conky_lower;
     bool fading;
+    bool center;
 
     struct Plane *planes;
     struct Path *paths;
@@ -675,16 +676,21 @@ MagickWand *doMagick(const char *current, int width, int height)
 
     int newheight = orig_height;
     int newwidth = orig_width;
+    bool tallscreen = width < height;
+    double screen_aspect = (double)width / (double)height;
+    double image_aspect = (double)orig_width / (double)orig_height;
 
-    if (orig_width < orig_height) {
-        double aspect = (double)height / (double)width;
-        newheight = (int)(orig_width * aspect);
-    } else  {
-        double aspect = (double)width / (double)height;
-        newwidth = (int)(orig_height * aspect);
+    if(screen_aspect < image_aspect) {
+        newwidth = (int)((double)orig_height * screen_aspect);
+    } else {
+        newheight = (int)((double)orig_width / screen_aspect);
     }
 
-    status = MagickCropImage(wand, newwidth, newheight, 0, 0);
+    if(settings.center) {
+        status = MagickCropImage(wand, newwidth, newheight, (orig_width - newwidth) / 2, (orig_height - newheight) / 2);
+    } else {
+        status = MagickCropImage(wand, newwidth, newheight, 0, 0);
+    }
 
     if (status == MagickFalse) {
         ThrowWandException(wand);
@@ -908,6 +914,7 @@ void help(const char *filename)
     printf("                       example: -p 0:path,1:path,path\n");
     printf("\n");
     printf("    -c, conky      : finds and lowers conky's window\n");
+    printf("    -C, center     : center wallpapers\n");
     printf("    -h, help       : help\n");
     printf("\n");
 }
@@ -932,6 +939,7 @@ int main(int argc, char *argv[])
 
     settings.smoothfunction = 2;
     settings.conky_lower = false;
+    settings.center = false;
     settings.running = true;
     settings.fading = false;
     settings.fade = DEFAULT_FADE_TIME;
@@ -941,6 +949,7 @@ int main(int argc, char *argv[])
 
     static const struct option longOpts[] = {
         { "conky", required_argument, 0, 'c' },
+        { "center", required_argument, 0, 'C' },
         { "paths", required_argument, 0, 'p' },
         { "smooth", required_argument, 0, 's' },
         { "fade", required_argument, 0, 'f' },
@@ -955,7 +964,7 @@ int main(int argc, char *argv[])
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:hcs:",
+                    "o:p:f:i:hcs:C",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -971,6 +980,10 @@ int main(int argc, char *argv[])
 
             case 'c':
                 settings.conky_lower = true;
+                break;
+
+            case 'C':
+                settings.center = true;
                 break;
 
             case 's':
