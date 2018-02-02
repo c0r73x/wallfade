@@ -180,11 +180,8 @@ float getDeltaTime()
     static struct timespec last_ts;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    float difftime = (
-                         (ts.tv_sec) * 1000 + ts.tv_nsec / 1000000
-                     ) - (
-                         (last_ts.tv_sec) * 1000 + last_ts.tv_nsec / 1000000
-                     );
+    float difftime = (ts.tv_sec * 1000 + ts.tv_nsec / 1000000) -
+                     (last_ts.tv_sec * 1000 + last_ts.tv_nsec / 1000000);
 
     last_ts = ts;
     return difftime * 0.001f;
