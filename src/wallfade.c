@@ -9,7 +9,6 @@
 #include <dirent.h>                 // for DIR, opendir, closedir, readdir
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
-#include <libgen.h>                 // for basename
 #include <limits.h>                 // for PATH_MAX
 #include <signal.h>                 // for signal, SIGINT, SIGKILL, SIGQUIT
 #include <stdbool.h>                // for bool
@@ -954,7 +953,7 @@ int getProcIdByName(const char *proc_name)
 
             if (id > 0 && id != current) {
                 char path[PATH_MAX] = {0};
-                sprintf(path, "/proc/%s/cmdline", ent->d_name);
+                sprintf(path, "/proc/%s/stat", ent->d_name);
 
                 FILE *f = fopen(path, "r");
 
@@ -965,10 +964,12 @@ int getProcIdByName(const char *proc_name)
 
                 char name[PATH_MAX];
 
-                int ret = fscanf(f, "%" S(PATH_MAX) "s", name);
-                if (ret > 0 && !strcmp(basename(name), proc_name)) {
+                int ret = fscanf(f, "%*d (%" S(PATH_MAX) "[^)]", name);
+                if (ret > 0 && !strcmp(name, proc_name)) {
                     pid = id;
                     break;
+                } else {
+                    printf("%s\n", name);
                 }
 
                 fclose(f);
