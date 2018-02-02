@@ -951,21 +951,23 @@ int parsePaths(char *paths)
 
         printf("Monitor %d path: %s\n", i, settings.paths[i].path);
 
-        if (settings.paths[i].path[len] == '/') {
+        if (settings.paths[i].path[len] != '/') {
             sprintf(
                 settings.paths[i].path + len,
                 "%.*s",
                 (int)sizeof(settings.paths[i].path) - len,
-                "*.{jpg,png}"
+                "/"
             );
-        } else {
-            sprintf(
-                settings.paths[i].path + len,
-                "%.*s",
-                (int)sizeof(settings.paths[i].path) - len,
-                "/*.{jpg,png}"
-            );
+
+            len = strlen(settings.paths[i].path);
         }
+
+        sprintf(
+            settings.paths[i].path + len,
+            "%.*s",
+            (int)sizeof(settings.paths[i].path) - len,
+            "*.{jpg,png}"
+        );
     }
 
     return 1;
