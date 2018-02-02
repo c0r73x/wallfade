@@ -80,7 +80,7 @@ struct _settings {
 
 pthread_t thread;
 
-Window findByClass(const char* classname);
+Window findByClass(const char *classname);
 Window findDesktop();
 float getDeltaTime();
 void getMonitors();
@@ -109,7 +109,7 @@ int handler(Display *dpy, XErrorEvent *e)
     return 0;
 }
 
-Window findByClass(const char* classname)
+Window findByClass(const char *classname)
 {
     unsigned int n;
     Window troot, parent, *children;
@@ -180,9 +180,14 @@ float getDeltaTime()
     static struct timespec last_ts;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    float difftime=((ts.tv_sec)*1000+ts.tv_nsec/1000000)-((last_ts.tv_sec)*1000+last_ts.tv_nsec/1000000);
-    last_ts=ts;
-    return difftime*0.001f;
+    float difftime = (
+                         (ts.tv_sec) * 1000 + ts.tv_nsec / 1000000
+                     ) - (
+                         (last_ts.tv_sec) * 1000 + last_ts.tv_nsec / 1000000
+                     );
+
+    last_ts = ts;
+    return difftime * 0.001f;
 }
 
 void getMonitors()
@@ -298,6 +303,7 @@ int init(int argc, char **argv)
         printf("Waiting for %s...\n", settings.lower);
 
         Window wid = 0;
+
         do {
             wid = findByClass(settings.lower);
 
@@ -481,7 +487,7 @@ void drawPlanes()
         static float linear = 0.0f;
 
         linear += settings.fade * settings.seconds;
-        alpha = smooth(0.0f,1.0f,linear);
+        alpha = smooth(0.0f, 1.0f, linear);
 
         if (linear > 1.0f) {
             settings.fading = false;
@@ -672,20 +678,20 @@ MagickWand *doMagick(const char *current, int width, int height)
     double screen_aspect = (double)width / (double)height;
     double image_aspect = (double)orig_width / (double)orig_height;
 
-    if(screen_aspect < image_aspect) {
+    if (screen_aspect < image_aspect) {
         newwidth = (int)((double)orig_height * screen_aspect);
     } else {
         newheight = (int)((double)orig_width / screen_aspect);
     }
 
-    if(settings.center) {
+    if (settings.center) {
         status = MagickCropImage(
-            wand,
-            newwidth,
-            newheight,
-            (orig_width - newwidth) / 2,
-            (orig_height - newheight) / 2
-        );
+                     wand,
+                     newwidth,
+                     newheight,
+                     (orig_width - newwidth) / 2,
+                     (orig_height - newheight) / 2
+                 );
     } else {
         status = MagickCropImage(wand, newwidth, newheight, 0, 0);
     }
