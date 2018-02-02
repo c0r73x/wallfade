@@ -5,7 +5,6 @@
 #include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
 #include <X11/Xutil.h>              // for XVisualInfo
 #include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
-#include <bsd/string.h>             // for strlcpy, strlcat
 #include <dirent.h>                 // for DIR, opendir, closedir, readdir
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
@@ -513,11 +512,14 @@ void drawPlanes()
             for (int i = 0; i < settings.nmon; i++) {
                 uint32_t tmp = settings.planes[i].front;
                 settings.planes[i].front = settings.planes[i].back;
-                strlcpy(
+
+                sprintf(
                     settings.planes[i].front_path,
-                    settings.planes[i].back_path,
-                    sizeof(settings.planes[i].front_path)
+                    "%.*s",
+                    (int)sizeof(settings.planes[i].front_path),
+                    settings.planes[i].back_path
                 );
+
                 settings.planes[i].back = tmp;
 
                 randomImage(
@@ -587,7 +589,8 @@ void checkMessages()
                     settings.planes[i].front_path
                 );
 
-                strcat(output, line);
+                int len = strlen(output);
+                sprintf(output + len, "%.*s", MEM_SIZE - len, line);
             }
 
             sprintf(settings.shmem, "%c%.*s", MSG_PARENT, MEM_SIZE, output);
@@ -663,7 +666,7 @@ char **getFiles(int monitor, int *total_files)
                 );
             } else {
                 files[i] = malloc(PATH_MAX);
-                strlcpy(files[i], file, PATH_MAX);
+                sprintf(files[i], "%.*s", PATH_MAX - 1, file);
                 nfiles++;
 
                 free(file);
@@ -842,10 +845,11 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
             settings.nfiles[monitor] != 1
         );
 
-        strlcpy(
+        sprintf(
             plane->back_path,
-            files[bkrand],
-            sizeof(plane->back_path)
+            "%.*s",
+            (int)sizeof(plane->back_path),
+            files[bkrand]
         );
 
         loadTexture(
@@ -898,10 +902,11 @@ int parsePaths(char *paths)
             int monitor = atoi(m);
 
             if (monitor >= 0 && monitor < settings.nmon) {
-                strlcpy(
+                sprintf(
                     settings.paths[monitor].path,
-                    p,
-                    sizeof(settings.paths[monitor].path)
+                    "%.*s",
+                    (int)sizeof(settings.paths[monitor].path),
+                    p
                 );
             } else {
                 fprintf(
@@ -913,7 +918,7 @@ int parsePaths(char *paths)
         }
 
         if (m != NULL) {
-            strlcpy(default_path, m, sizeof(default_path));
+            sprintf(default_path, "%.*s", (int)sizeof(default_path) - 1, m);
         }
     }
 
@@ -926,10 +931,11 @@ int parsePaths(char *paths)
 
         if (len == 0) {
             if (strlen(default_path)) {
-                strlcpy(
+                sprintf(
                     settings.paths[i].path,
-                    default_path,
-                    sizeof(settings.paths[i].path)
+                    "%.*s",
+                    (int)sizeof(settings.paths[i].path),
+                    default_path
                 );
 
                 len = strlen(default_path);
@@ -946,16 +952,18 @@ int parsePaths(char *paths)
         printf("Monitor %d path: %s\n", i, settings.paths[i].path);
 
         if (settings.paths[i].path[len] == '/') {
-            strlcat(
-                settings.paths[i].path,
-                "*.{jpg,png}",
-                sizeof(settings.paths[i].path)
+            sprintf(
+                settings.paths[i].path + len,
+                "%.*s",
+                (int)sizeof(settings.paths[i].path) - len,
+                "*.{jpg,png}"
             );
         } else {
-            strlcat(
-                settings.paths[i].path,
-                "/*.{jpg,png}",
-                sizeof(settings.paths[i].path)
+            sprintf(
+                settings.paths[i].path + len,
+                "%.*s",
+                (int)sizeof(settings.paths[i].path) - len,
+                "/*.{jpg,png}"
             );
         }
     }
@@ -1103,7 +1111,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'l':
-                strlcpy(settings.lower, optarg, PATH_MAX);
+                sprintf(settings.lower, "%.*s", PATH_MAX - 1, optarg);
                 break;
 
             case 'c':
@@ -1115,7 +1123,7 @@ int main(int argc, char *argv[])
                 break;
 
             case 'p':
-                strlcpy(paths, optarg, PATH_MAX * 10);
+                sprintf(paths, "%.*s", (PATH_MAX * 10) - 1, optarg);
                 break;
 
             case 'm':
