@@ -21,13 +21,23 @@
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
 
+#include <sys/shm.h>
+#include <sys/stat.h>
+
 #include "magick.h"
+
+#define MEM_SIZE 1024
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_TIME 1
 
 #define S_(x) #x
 #define S(x) S_(x)
+
+#define MESSAGE(x) !strcmp(settings.shmem, x)
+
+#define MSG_NONE '\0'
+#define MSG_PARENT '\1'
 
 struct Path {
     char path[PATH_MAX];
@@ -62,6 +72,7 @@ struct _settings {
     int parent;
 
     float seconds;
+    float timer;
 
     uint32_t screen;
 
@@ -77,6 +88,7 @@ struct _settings {
     bool center;
 
     char lower[PATH_MAX];
+    char *shmem;
 
     struct Plane *planes;
     struct Path *paths;
@@ -107,6 +119,8 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
 void randomImages(int monitor);
 int parsePaths(char *paths);
 int handler(Display *dpy, XErrorEvent *e);
+int getProcIdByName(const char *proc_name);
+char *create_shared_memory(size_t size, int parent);
 
 int handler(Display *dpy, XErrorEvent *e)
 {
@@ -409,6 +423,8 @@ void gotsig(int signum)
 
 void shutdown()
 {
+    shmdt(&settings.shmem);
+
     if (settings.planes) {
         free(settings.planes);
     }
@@ -549,11 +565,41 @@ void drawPlanes()
     }
 }
 
+void checkMessages()
+{
+    if (settings.shmem[0] != MSG_NONE && settings.shmem[0] != MSG_PARENT) {
+        if (MESSAGE("next")) {
+            settings.fading = true;
+            settings.timer = 0;
+
+            settings.shmem[0] = MSG_NONE;
+        } else if (MESSAGE("current")) {
+            char output[MEM_SIZE] = {0};
+
+            for (int i = 0; i < settings.nmon; i++) {
+                char line[128] = {0};
+
+                sprintf(
+                    line,
+                    "Monitor %d: %.*s\n",
+                    i,
+                    100,
+                    settings.planes[i].front_path
+                );
+
+                strcat(output, line);
+            }
+
+            sprintf(settings.shmem, "%c%.*s", MSG_PARENT, MEM_SIZE, output);
+        } else {
+            fprintf(stderr, "Unknown command \"%s\"\n", settings.shmem);
+            return;
+        }
+    }
+}
 
 void update()
 {
-    static float timer = 0;
-
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glMatrixMode(GL_MODELVIEW);
@@ -567,17 +613,19 @@ void update()
 
     settings.seconds = getDeltaTime();
 
-    if (timer >= settings.idle) {
+    if (settings.timer >= settings.idle) {
         settings.fading = true;
-        timer = 0;
+        settings.timer = 0;
     }
 
     if (!settings.fading) {
-        timer += settings.seconds;
+        settings.timer += settings.seconds;
         usleep(50000);
     }
 
     usleep(50000);
+
+    checkMessages();
 }
 
 char **getFiles(int monitor, int *total_files)
@@ -918,23 +966,24 @@ int parsePaths(char *paths)
 void help(const char *filename)
 {
     printf("Usage: %s -p path [options]\n", filename);
-    printf("    -f, fade   : fade time (default 1.0s)\n");
-    printf("    -i, idle   : idle time (default 3s)\n");
-    printf("    -s, smooth : smoothing function to use when fading.\n");
-    printf("                   1: linear\n");
-    printf("                   2: smoothstep (default)\n");
-    printf("                   3: smootherstep\n");
+    printf("    -f, fade    : fade time (default 1.0s)\n");
+    printf("    -i, idle    : idle time (default 3s)\n");
+    printf("    -s, smooth  : smoothing function to use when fading.\n");
+    printf("                    1: linear\n");
+    printf("                    2: smoothstep (default)\n");
+    printf("                    3: smootherstep\n");
     printf("\n");
-    printf("    -p, paths  : wallpapers paths.\n");
-    printf("                   use monitor:path, if no monitor is\n");
-    printf("                   specified the path will be used as\n");
-    printf("                   the default path\n");
+    printf("    -p, paths   : wallpapers paths.\n");
+    printf("                    use monitor:path, if no monitor is\n");
+    printf("                    specified the path will be used as\n");
+    printf("                    the default path\n");
     printf("\n");
-    printf("                   example: -p 0:path,1:path,path\n");
+    printf("                    example: -p 0:path,1:path,path\n");
     printf("\n");
-    printf("    -l, lower  : finds and lowers window by classname (e.g. Conky)\n");
-    printf("    -c, center : center wallpapers\n");
-    printf("    -h, help   : help\n");
+    printf("    -l, lower   : finds and lowers window by classname (e.g. Conky)\n");
+    printf("    -c, center  : center wallpapers\n");
+    printf("    -m, message : send message to running process\n");
+    printf("    -h, help    : help\n");
     printf("\n");
 }
 
@@ -959,12 +1008,13 @@ int getProcIdByName(const char *proc_name)
 
                 if (f == NULL) {
                     fprintf(stderr, "Unable to open %s for reading!\n", path);
-                    exit(EXIT_FAILURE);
+                    continue;
                 }
 
                 char name[PATH_MAX];
 
                 int ret = fscanf(f, "%*d (%" S(PATH_MAX) "[^)]", name);
+
                 if (ret > 0 && !strcmp(name, proc_name)) {
                     pid = id;
                     break;
@@ -980,13 +1030,19 @@ int getProcIdByName(const char *proc_name)
     return pid;
 }
 
+char *create_shared_memory(size_t size, int parent)
+{
+    int shmid = shmget(parent, size, IPC_CREAT | S_IRUSR | S_IWUSR);
+    return shmat(shmid, 0, 0);
+}
+
 int main(int argc, char *argv[])
 {
     struct timespec ts;
 
     if (timespec_get(&ts, TIME_UTC) == 0) {
         fprintf(stderr, "Unable to get time for random!\n");
-        exit(1);
+        return EXIT_FAILURE;
     }
 
     srandom(ts.tv_nsec ^ ts.tv_sec);
@@ -1001,6 +1057,7 @@ int main(int argc, char *argv[])
     memset(settings.lower, 0, PATH_MAX);
 
     settings.smoothfunction = 2;
+    settings.timer = 0;
     settings.center = false;
     settings.running = true;
     settings.fading = false;
@@ -1010,11 +1067,8 @@ int main(int argc, char *argv[])
     settings.paths = NULL;
     settings.parent = getProcIdByName("wallfade");
 
-    if (settings.parent != -1) {
-        /* Fix IPC */
-        printf("Another wallfade process is already running!\n");
-        return 0;
-    }
+    settings.shmem = create_shared_memory(MEM_SIZE, getpid());
+    memset(settings.shmem, 0, MEM_SIZE);
 
     static const struct option longOpts[] = {
         { "lower", required_argument, 0, 'l' },
@@ -1023,6 +1077,7 @@ int main(int argc, char *argv[])
         { "smooth", required_argument, 0, 's' },
         { "fade", required_argument, 0, 'f' },
         { "idle", required_argument, 0, 'i' },
+        { "message", required_argument, 0, 'm' },
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 }
     };
@@ -1033,7 +1088,7 @@ int main(int argc, char *argv[])
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:hcs:l:",
+                    "o:p:f:i:hcs:l:m:",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -1063,13 +1118,49 @@ int main(int argc, char *argv[])
                 strlcpy(paths, optarg, PATH_MAX * 10);
                 break;
 
+            case 'm':
+                if (settings.parent != -1) {
+                    settings.shmem = create_shared_memory(
+                                         MEM_SIZE,
+                                         settings.parent
+                                     );
+
+                    while (settings.shmem[0] != MSG_NONE) {
+                        usleep(10000);
+                    }
+
+                    sprintf(settings.shmem, "%.*s", MEM_SIZE, optarg);
+
+                    while (settings.shmem[0] != MSG_NONE) {
+                        if (settings.shmem[0] == MSG_PARENT) {
+                            printf("%s", &settings.shmem[1]);
+                            settings.shmem[0] = MSG_NONE;
+                            break;
+                        }
+
+                        usleep(10000);
+                    }
+
+                    shmdt(&settings.shmem);
+                } else {
+                    fprintf(stderr, "No wallfade process found!\n");
+                    return EXIT_FAILURE;
+                }
+
+                return EXIT_SUCCESS;
+
             case 'h':
                 help(argv[0]);
-                return (0);
+                return EXIT_SUCCESS;
 
             default:
                 break;
         }
+    }
+
+    if (settings.parent != -1) {
+        fprintf(stderr, "Another wallfade processes is already running!\n");
+        return EXIT_FAILURE;
     }
 
     if (strlen(paths) == 0) {
@@ -1086,10 +1177,10 @@ int main(int argc, char *argv[])
                     update();
                 }
             }
+
+            shutdown();
         }
     }
 
-    shutdown();
-
-    return 0;
+    return EXIT_SUCCESS;
 }
