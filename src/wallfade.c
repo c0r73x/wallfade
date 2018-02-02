@@ -432,6 +432,15 @@ void shutdown()
         free(settings.paths);
     }
 
+    for (int i = 0; i < settings.nmon; i++) {
+        if (settings.planes[i].front != 0) {
+            glDeleteTextures(1, &settings.planes[i].front);
+        }
+        if (settings.planes[i].back != 0) {
+            glDeleteTextures(1, &settings.planes[i].back);
+        }
+    }
+
     glXDestroyContext(settings.dpy, settings.opengl.ctx);
 
     #ifdef GraphicsMagick
@@ -800,24 +809,35 @@ void loadTexture(const char *current, uint32_t *id, int width, int height)
     }
 
     if (*id != 0) {
-        glDeleteTextures(1, id);
+        glBindTexture(GL_TEXTURE_2D, *id);
+
+        glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            width,
+            height,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            data
+        );
+    } else {
+        glGenTextures(1, id);
+        glBindTexture(GL_TEXTURE_2D, *id);
+
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGB,
+            width,
+            height,
+            0,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            data
+        );
     }
-
-    glGenTextures(1, id);
-
-    glBindTexture(GL_TEXTURE_2D, *id);
-
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGB,
-        width,
-        height,
-        0,
-        GL_RGB,
-        GL_UNSIGNED_BYTE,
-        data
-    );
 
     DestroyMagickWand(wand);
 
