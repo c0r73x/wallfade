@@ -82,7 +82,7 @@ pthread_t thread;
 
 Window findByClass(const char* classname);
 Window findDesktop();
-float getTime();
+float getDeltaTime();
 void getMonitors();
 void initOpengl();
 int init();
@@ -175,12 +175,14 @@ Window findDesktop()
     return settings.root;
 }
 
-float getTime()
+float getDeltaTime()
 {
+    static struct timespec last_ts;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-
-    return 1000 * ts.tv_sec + (double)ts.tv_nsec / 1e6;
+    float difftime=((ts.tv_sec)*1000+ts.tv_nsec/1000000)-((last_ts.tv_sec)*1000+last_ts.tv_nsec/1000000);
+    last_ts=ts;
+    return difftime*0.001f;
 }
 
 void getMonitors()
@@ -262,7 +264,7 @@ int init(int argc, char **argv)
     #else
     MagickWandGenesis();
     #endif
-    
+
 
     settings.dpy = XOpenDisplay(NULL);
 
@@ -542,7 +544,6 @@ void drawPlanes()
 
 void update()
 {
-    static float last_time = 0;
     static float timer = 0;
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -556,9 +557,7 @@ void update()
 
     XFlush(settings.dpy);
 
-    float current_time = getTime();
-    settings.seconds = (current_time - last_time) * 0.001f;
-    last_time = current_time;
+    settings.seconds = getDeltaTime();
 
     if (timer >= settings.idle) {
         settings.fading = true;
