@@ -6,10 +6,11 @@
 #include <X11/Xutil.h>              // for XVisualInfo
 #include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
 #include <bsd/string.h>             // for strlcpy, strlcat
+#include <dirent.h>                 // for DIR, opendir, closedir, readdir
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
+#include <libgen.h>                 // for basename
 #include <limits.h>                 // for PATH_MAX
-#include <tgmath.h>                 // for fmaxf, fminf
 #include <signal.h>                 // for signal, SIGINT, SIGKILL, SIGQUIT
 #include <stdbool.h>                // for bool
 #include <stdint.h>                 // for uint32_t
@@ -17,6 +18,7 @@
 #include <stdlib.h>                 // for exit, free, malloc, rand, realpath
 #include <string.h>                 // for __s1_len, __s2_len, strcmp, strlen
 #include <sys/time.h>               // for CLOCK_MONOTONIC
+#include <tgmath.h>                 // for fmaxf, fminf
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
 
@@ -24,6 +26,9 @@
 
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_TIME 1
+
+#define S_(x) #x
+#define S(x) S_(x)
 
 struct Path {
     char path[PATH_MAX];
@@ -55,6 +60,7 @@ struct _settings {
     Window win;
 
     int base;
+    int parent;
 
     float seconds;
 
@@ -933,6 +939,48 @@ void help(const char *filename)
     printf("\n");
 }
 
+int getProcIdByName(const char *proc_name)
+{
+    int pid = -1;
+    int current = getpid();
+
+    DIR *proc = opendir("/proc");
+
+    if (proc != NULL) {
+        struct dirent *ent;
+
+        while (pid < 0 && (ent = readdir(proc))) {
+            int id = atoi(ent->d_name);
+
+            if (id > 0 && id != current) {
+                char path[PATH_MAX] = {0};
+                sprintf(path, "/proc/%s/cmdline", ent->d_name);
+
+                FILE *f = fopen(path, "r");
+
+                if (f == NULL) {
+                    fprintf(stderr, "Unable to open %s for reading!\n", path);
+                    exit(EXIT_FAILURE);
+                }
+
+                char name[PATH_MAX];
+
+                int ret = fscanf(f, "%" S(PATH_MAX) "s", name);
+                if (ret > 0 && !strcmp(basename(name), proc_name)) {
+                    pid = id;
+                    break;
+                }
+
+                fclose(f);
+            }
+        }
+    }
+
+    closedir(proc);
+
+    return pid;
+}
+
 int main(int argc, char *argv[])
 {
     struct timespec ts;
@@ -961,6 +1009,13 @@ int main(int argc, char *argv[])
     settings.idle = DEFAULT_IDLE_TIME;
     settings.planes = NULL;
     settings.paths = NULL;
+    settings.parent = getProcIdByName("wallfade");
+
+    if (settings.parent != -1) {
+        /* Fix IPC */
+        printf("Another wallfade process is already running!\n");
+        return 0;
+    }
 
     static const struct option longOpts[] = {
         { "lower", required_argument, 0, 'l' },
