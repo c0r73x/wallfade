@@ -968,8 +968,6 @@ int getProcIdByName(const char *proc_name)
                 if (ret > 0 && !strcmp(name, proc_name)) {
                     pid = id;
                     break;
-                } else {
-                    printf("%s\n", name);
                 }
 
                 fclose(f);
