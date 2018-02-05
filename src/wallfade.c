@@ -29,7 +29,7 @@
 
 #include "magick.h"
 
-#define MEM_SIZE 1024
+#define MEM_SIZE 4096
 
 #define MAX_MONITORS 10
 #define DEFAULT_IDLE_TIME 3
@@ -632,8 +632,7 @@ void checkMessages()
 
                 len += sprintf(output + len, "wallfade messages:\n");
                 len += sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len += sprintf(output + len,
-                               "\tnext    : force wallfade to change wallpapers\n");
+                len += sprintf(output + len, "\tnext : force wallfade to change wallpapers\n");
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
@@ -644,7 +643,7 @@ void checkMessages()
                 char output[MEM_SIZE] = {0};
 
                 for (int i = 0; i < settings.nmon; i++) {
-                    char line[128] = {0};
+                    char line[256] = {0};
 
                     sprintf(
                         line,
@@ -653,6 +652,35 @@ void checkMessages()
                         100,
                         settings.planes[i].front_path
                     );
+
+                    int len = strlen(output);
+                    sprintf(output + len, "%.*s", MEM_SIZE - len, line);
+                }
+
+                messageRespond(output);
+             } else if (MESSAGE(command, "paths")) {
+                char output[MEM_SIZE] = {0};
+
+                for (int i = 0; i < settings.nmon; i++) {
+                    char line[256] = {0};
+
+                    if(strlen(settings.paths[i].path) > 0) {
+                        sprintf(
+                                line,
+                                "Monitor %d: %.*s\n",
+                                i,
+                                100,
+                                settings.paths[i].path
+                               );
+                    } else {
+                        sprintf(
+                                line,
+                                "Monitor %d: %.*s\n",
+                                i,
+                                100,
+                                settings.default_path
+                               );
+                    }
 
                     int len = strlen(output);
                     sprintf(output + len, "%.*s", MEM_SIZE - len, line);
@@ -670,7 +698,7 @@ void checkMessages()
 
                 if (token != 0 && isdigit(token[0])) {
                     settings.fade = 1.0f / strtof(token, 0);
-                    messageRespond("%s set to %s\n", command, token);
+                    messageRespond("setting %s to %s\n", command, token);
                 } else {
                     messageRespond(
                         "%s is set to %.2f\n",
@@ -684,7 +712,7 @@ void checkMessages()
 
                 if (token != 0 && isdigit(token[0])) {
                     settings.idle = strtol(token, 0, 10);
-                    messageRespond("%s set to %s\n", command, token);
+                    messageRespond("setting %s to %s\n", command, token);
                 } else {
                     messageRespond(
                         "%s is set to %d\n",
@@ -698,7 +726,7 @@ void checkMessages()
 
                 if (token != 0 && isdigit(token[0])) {
                     settings.smoothfunction = strtol(token, 0, 10);
-                    messageRespond("%s set to %s\n", command, token);
+                    messageRespond("setting %s to %s\n", command, token);
                 } else {
                     messageRespond(
                         "%s is set to %d\n",
@@ -1087,7 +1115,7 @@ int parsePaths(char *paths)
 
         printf("Monitor %d path: %s\n", i, settings.paths[i].path);
 
-        if (settings.paths[i].path[len] != '/') {
+        if (settings.paths[i].path[len - 1] != '/') {
             sprintf(
                 settings.paths[i].path + len,
                 "%.*s",
