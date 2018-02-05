@@ -19,6 +19,7 @@
 #include <tgmath.h>                 // for fmaxf, fminf
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
+#include <ctype.h>                  // for isdigit
 
 #include <sys/shm.h>
 #include <sys/stat.h>
@@ -33,7 +34,7 @@
 #define S_(x) #x
 #define S(x) S_(x)
 
-#define MESSAGE(x) !strcmp(settings.shmem, x)
+#define MESSAGE(y,x) !strcmp(y, x)
 
 #define MSG_NONE '\0'
 #define MSG_PARENT '\1'
@@ -579,34 +580,79 @@ void drawPlanes()
 void checkMessages()
 {
     if (settings.shmem[0] != MSG_NONE && settings.shmem[0] != MSG_PARENT) {
-        if (MESSAGE("next")) {
-            settings.fading = true;
-            settings.timer = 0;
+        char *tmpstr = strdup(settings.shmem);
+        char separator[4]=" ,\0";
+        char *token = strtok(tmpstr,separator);
+        while(token!=0)
+        {
+            if (MESSAGE(token,"next")) {
+                settings.fading = true;
+                settings.timer = 0;
+            } else if (MESSAGE(token,"current")) {
+                char output[MEM_SIZE] = {0};
 
-            settings.shmem[0] = MSG_NONE;
-        } else if (MESSAGE("current")) {
-            char output[MEM_SIZE] = {0};
+                for (int i = 0; i < settings.nmon; i++) {
+                    char line[128] = {0};
 
-            for (int i = 0; i < settings.nmon; i++) {
-                char line[128] = {0};
+                    sprintf(
+                        line,
+                        "Monitor %d: %.*s\n",
+                        i,
+                        100,
+                        settings.planes[i].front_path
+                    );
 
-                sprintf(
-                    line,
-                    "Monitor %d: %.*s\n",
-                    i,
-                    100,
-                    settings.planes[i].front_path
-                );
+                    int len = strlen(output);
+                    sprintf(output + len, "%.*s", MEM_SIZE - len, line);
+                }
 
-                int len = strlen(output);
-                sprintf(output + len, "%.*s", MEM_SIZE - len, line);
+                sprintf(settings.shmem, "%c%.*s", MSG_PARENT, MEM_SIZE, output);
+                usleep(100000);
+            } else if (MESSAGE(token,"fade")) {
+                token = strtok(0,separator);
+                if (token == 0) {
+                    printf("fade needs a number after\n");
+                    break;
+                }
+                if (isdigit(token[0])) {
+                    settings.fade=1.0f/strtof(token,0);
+                } else {
+                    printf("idle needs a number after\n");
+                    break;
+                }
+            } else if (MESSAGE(token,"idle")) {
+                token = strtok(0,separator);
+                if (token == 0) {
+                    printf("idle needs a number after\n");
+                    break;
+                }
+                if (isdigit(token[0])) {
+                    settings.idle=strtol(token,0,10);
+                } else {
+                    printf("idle needs a number after\n");
+                    break;
+                }
+            } else if (MESSAGE(token,"smooth")) {
+                token = strtok(0,separator);
+                if (token == 0) {
+                    printf("smooth needs a number after\n");
+                    break;
+                }
+                if (isdigit(token[0])) {
+                    settings.smoothfunction = strtol(token, 0, 10);
+                } else {
+                    printf("smooth needs a number after\n");
+                    break;
+                }
+            } else {
+                fprintf(stderr, "Unknown command \"%s\"\n", token);
+                settings.shmem[0] = MSG_NONE;
+                return;
             }
-
-            sprintf(settings.shmem, "%c%.*s", MSG_PARENT, MEM_SIZE, output);
-        } else {
-            fprintf(stderr, "Unknown command \"%s\"\n", settings.shmem);
-            return;
+            token = strtok(0,separator);
         }
+        if(tmpstr) free(tmpstr);
+        settings.shmem[0] = MSG_NONE;
     }
 }
 
