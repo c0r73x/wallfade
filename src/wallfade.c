@@ -672,7 +672,11 @@ void checkMessages()
                     settings.fade = 1.0f / strtof(token, 0);
                     messageRespond("%s set to %s\n", command, token);
                 } else {
-                    messageRespond("%s requires an argument\n", command);
+                    messageRespond(
+                        "%s is set to %.2f\n",
+                        command,
+                        1.0f / settings.fade
+                    );
                     break;
                 }
             } else if (MESSAGE(command, "idle")) {
@@ -682,7 +686,11 @@ void checkMessages()
                     settings.idle = strtol(token, 0, 10);
                     messageRespond("%s set to %s\n", command, token);
                 } else {
-                    messageRespond("%s requires an argument\n", command);
+                    messageRespond(
+                        "%s is set to %d\n",
+                        command,
+                        settings.idle
+                    );
                     break;
                 }
             } else if (MESSAGE(command, "smooth")) {
@@ -692,7 +700,11 @@ void checkMessages()
                     settings.smoothfunction = strtol(token, 0, 10);
                     messageRespond("%s set to %s\n", command, token);
                 } else {
-                    messageRespond("%s requires an argument\n", command);
+                    messageRespond(
+                        "%s is set to %d\n",
+                        command,
+                        settings.smoothfunction
+                    );
                     break;
                 }
             } else {
