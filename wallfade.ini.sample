@@ -1,0 +1,12 @@
+[SETTINGS]
+smooth = 2
+idle = 3
+fade = 1.0
+center = FALSE
+; lower = "conky"
+
+[PATHS]
+default = "~/images/wallpapers/*"
+
+; monitor0 = "~/images/wallpapers/one" 
+; monitor1 = "~/images/wallpapers/two" 

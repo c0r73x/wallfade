@@ -21,6 +21,9 @@
 #include <unistd.h>                 // for usleep
 #include <ctype.h>                  // for isdigit
 
+#include <iniparser.h>
+
+#include <pwd.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
 
@@ -28,6 +31,7 @@
 
 #define MEM_SIZE 1024
 
+#define MAX_MONITORS 10
 #define DEFAULT_IDLE_TIME 3
 #define DEFAULT_FADE_TIME 1
 
@@ -89,6 +93,8 @@ struct _settings {
     bool center;
 
     char lower[PATH_MAX];
+    char default_path[PATH_MAX];
+
     char *shmem;
 
     struct Plane *planes;
@@ -121,7 +127,8 @@ void randomImages(int monitor);
 int parsePaths(char *paths);
 int handler(Display *dpy, XErrorEvent *e);
 int getProcIdByName(const char *proc_name);
-char *create_shared_memory(size_t size, int parent);
+char *createSharedMemory(size_t size, int parent);
+void loadConfig();
 
 int handler(Display *dpy, XErrorEvent *e)
 {
@@ -625,7 +632,8 @@ void checkMessages()
 
                 len += sprintf(output + len, "wallfade messages:\n");
                 len += sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len += sprintf(output + len, "\tnext    : force wallfade to change wallpapers\n");
+                len += sprintf(output + len,
+                               "\tnext    : force wallfade to change wallpapers\n");
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
@@ -1002,60 +1010,59 @@ void randomImages(int monitor)
 
 int parsePaths(char *paths)
 {
-    settings.paths = malloc(settings.nmon * sizeof(struct Path));
+    if (strlen(paths)) {
+        char *p = 0;
 
-    for (int i = 0; i < settings.nmon; i++) {
-        settings.paths[i].path[0] = 0;
-    }
+        while ((p = strsep(&paths, ",")) != NULL) {
+            char *m = 0;
 
-    char *p = 0;
+            if ((m = strsep(&p, ":")) != NULL && p != NULL) {
+                int monitor = atoi(m);
 
-    char default_path[PATH_MAX] = {0};
+                if (monitor >= 0 && monitor < settings.nmon) {
+                    sprintf(
+                        settings.paths[monitor].path,
+                        "%.*s",
+                        (int)sizeof(settings.paths[monitor].path),
+                        p
+                    );
+                } else {
+                    fprintf(
+                        stderr,
+                        "Monitor %d not found, using default\n",
+                        monitor
+                    );
+                }
+            }
 
-    while ((p = strsep(&paths, ",")) != NULL) {
-        char *m = 0;
-
-        if ((m = strsep(&p, ":")) != NULL && p != NULL) {
-            int monitor = atoi(m);
-
-            if (monitor >= 0 && monitor < settings.nmon) {
+            if (m != NULL) {
                 sprintf(
-                    settings.paths[monitor].path,
+                    settings.default_path,
                     "%.*s",
-                    (int)sizeof(settings.paths[monitor].path),
-                    p
-                );
-            } else {
-                fprintf(
-                    stderr,
-                    "Monitor %d not found, using default\n",
-                    monitor
+                    (int)sizeof(settings.default_path) - 1,
+                    m
                 );
             }
         }
-
-        if (m != NULL) {
-            sprintf(default_path, "%.*s", (int)sizeof(default_path) - 1, m);
-        }
     }
 
-    if (strlen(default_path)) {
-        printf("Default path: %s\n", default_path);
+    if (strlen(settings.default_path)) {
+        printf("Default path: %s\n", settings.default_path);
     }
 
     for (int i = 0; i < settings.nmon; i++) {
         int len = strlen(settings.paths[i].path);
 
         if (len == 0) {
-            if (strlen(default_path)) {
+            if (strlen(settings.default_path)) {
                 sprintf(
                     settings.paths[i].path,
                     "%.*s",
                     (int)sizeof(settings.paths[i].path),
-                    default_path
+                    settings.default_path
                 );
 
-                len = strlen(default_path);
+                len = strlen(settings.default_path);
             } else {
                 fprintf(
                     stderr,
@@ -1157,7 +1164,80 @@ int getProcIdByName(const char *proc_name)
     return pid;
 }
 
-char *create_shared_memory(size_t size, int parent)
+const char *getHomeDir()
+{
+    const char *homedir = getenv("HOME");
+
+    if (homedir != 0) {
+        return homedir;
+    }
+
+    struct passwd *result = getpwuid(getuid());
+
+    if (result == 0) {
+        fprintf(stderr, "Unable to find home-directory\n");
+        exit(EXIT_FAILURE);
+    }
+
+    homedir = result->pw_dir;
+
+    return homedir;
+}
+
+bool fileExists(const char *name)
+{
+    struct stat buffer;
+    return (stat(name, &buffer) == 0);
+}
+
+void loadConfig()
+{
+    dictionary* ini = 0;
+    char filename[PATH_MAX] = {0};
+    char file[255] = {"/wallfade.ini"};
+
+    const char *confdir = getenv("XDG_CONFIG_HOME");
+
+    if (confdir == 0) {
+        sprintf(file, "/.wallfade.ini");
+        confdir = getHomeDir();
+    } else {
+        sprintf(filename, "%s%s", confdir, file);
+        if (!fileExists(filename)) {
+            sprintf(file, "/.wallfade.ini");
+            confdir = getHomeDir();
+        }
+    }
+
+    sprintf(filename, "%s%s", confdir, file);
+
+    if (fileExists(filename)) {
+        ini = iniparser_load(filename);
+    }
+
+    settings.smoothfunction = iniparser_getint(ini, "settings:smooth", 2);
+    settings.idle = iniparser_getint(ini, "settings:idle", DEFAULT_IDLE_TIME);
+    settings.fade = iniparser_getdouble(ini, "settings:fade", DEFAULT_FADE_TIME);
+    settings.center = iniparser_getboolean(ini, "settings:center", false);
+    strcpy(settings.lower, iniparser_getstring(ini, "settings:lower", "\0"));
+
+    strcpy(
+        settings.default_path,
+        iniparser_getstring(ini, "paths:default", "\0")
+    );
+
+    settings.paths = malloc(MAX_MONITORS * sizeof(struct Path));
+
+    for (int i = 0; i < MAX_MONITORS; i += 1) {
+        char monitor[256] = {0};
+        sprintf(monitor, "paths:monitor%d", i);
+        strcpy(settings.paths[i].path, iniparser_getstring(ini, monitor, "\0"));
+    }
+
+    iniparser_freedict(ini);
+}
+
+char *createSharedMemory(size_t size, int parent)
 {
     int shmid = shmget(parent, size, IPC_CREAT | S_IRUSR | S_IWUSR);
     return shmat(shmid, 0, 0);
@@ -1165,37 +1245,38 @@ char *create_shared_memory(size_t size, int parent)
 
 int main(int argc, char *argv[])
 {
-    struct timespec ts;
-
-    if (timespec_get(&ts, TIME_UTC) == 0) {
-        fprintf(stderr, "Unable to get time for random!\n");
-        return EXIT_FAILURE;
-    }
-
-    srandom(ts.tv_nsec ^ ts.tv_sec);
-
     int c;
 
-    signal(SIGINT, gotsig);
-    signal(SIGKILL, gotsig);
-    signal(SIGTERM, gotsig);
-    signal(SIGQUIT, gotsig);
-
-    memset(settings.lower, 0, PATH_MAX);
-
-    settings.smoothfunction = 2;
-    settings.timer = 0;
-    settings.center = false;
-    settings.running = true;
-    settings.fading = false;
-    settings.fade = DEFAULT_FADE_TIME;
-    settings.idle = DEFAULT_IDLE_TIME;
-    settings.planes = NULL;
-    settings.paths = NULL;
     settings.parent = getProcIdByName("wallfade");
 
-    settings.shmem = create_shared_memory(MEM_SIZE, getpid());
-    memset(settings.shmem, 0, MEM_SIZE);
+    if (settings.parent == -1) {
+        struct timespec ts;
+
+        if (timespec_get(&ts, TIME_UTC) == 0) {
+            fprintf(stderr, "Unable to get time for random!\n");
+            return EXIT_FAILURE;
+        }
+
+        srandom(ts.tv_nsec ^ ts.tv_sec);
+
+        signal(SIGINT, gotsig);
+        signal(SIGKILL, gotsig);
+        signal(SIGTERM, gotsig);
+        signal(SIGQUIT, gotsig);
+
+        settings.shmem = createSharedMemory(MEM_SIZE, getpid());
+        memset(settings.shmem, 0, MEM_SIZE);
+
+        memset(settings.default_path, 0, PATH_MAX);
+        memset(settings.lower, 0, PATH_MAX);
+
+        settings.timer = 0;
+        settings.running = true;
+        settings.fading = false;
+        settings.planes = NULL;
+
+        loadConfig();
+    }
 
     static const struct option longOpts[] = {
         { "lower", required_argument, 0, 'l' },
@@ -1210,7 +1291,7 @@ int main(int argc, char *argv[])
     };
 
     int longIndex = 0;
-    char paths[PATH_MAX * 10] = {0};
+    char paths[PATH_MAX * MAX_MONITORS] = {0};
 
     while ((c = getopt_long(
                     argc,
@@ -1220,7 +1301,6 @@ int main(int argc, char *argv[])
                     &longIndex
                 )) != -1) {
         switch (c) {
-
             case 'f':
                 settings.fade = 1.0f / strtof(optarg, NULL);
                 break;
@@ -1242,12 +1322,12 @@ int main(int argc, char *argv[])
                 break;
 
             case 'p':
-                sprintf(paths, "%.*s", (PATH_MAX * 10) - 1, optarg);
+                sprintf(paths, "%.*s", (PATH_MAX * MAX_MONITORS) - 1, optarg);
                 break;
 
             case 'm':
                 if (settings.parent != -1) {
-                    settings.shmem = create_shared_memory(
+                    settings.shmem = createSharedMemory(
                                          MEM_SIZE,
                                          settings.parent
                                      );
@@ -1292,9 +1372,11 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (strlen(paths) == 0) {
+    if (strlen(paths) == 0 && strlen(settings.default_path) == 0) {
         fprintf(stderr, "No paths specified!\n");
         help(argv[0]);
+
+        return EXIT_FAILURE;
     } else {
         if (init(argc, argv)) {
             if (parsePaths(paths)) {

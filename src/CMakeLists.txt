@@ -17,6 +17,7 @@ else()
     set(UseGraphicsMagick 1)
 endif()
 
+find_package(Iniparser REQUIRED)
 find_package(X11 REQUIRED)
 find_package(OpenGL REQUIRED)
 
@@ -42,6 +43,7 @@ include_directories(
     ${X11_Xrandr_INCLUDE_PATH}
     ${X11_Xcomposite_INCLUDE_PATH}
     ${OPENGL_INCLUDE_DIR}
+    ${INIPARSER_INCLUDE_DIRS}
     )
 
 set(CMAKE_C_STANDARD 11)
@@ -68,6 +70,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${X11_Xrandr_LIB}
     ${X11_Xcomposite_LIB}
     ${OPENGL_LIBRARIES}
+    ${INIPARSER_LIBRARIES}
     #    Threads::Threads
     bsd
     m
