@@ -572,9 +572,11 @@ void drawPlanes()
                     settings.planes[i].front_path,
                     i
                 );
+                usleep(500000);
             }
         }  else {
             randomImages(i);
+            usleep(500000);
         }
     }
 }
