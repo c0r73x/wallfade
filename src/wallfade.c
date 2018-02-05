@@ -437,6 +437,7 @@ void shutdown()
         if (settings.planes[i].front != 0) {
             glDeleteTextures(1, &settings.planes[i].front);
         }
+
         if (settings.planes[i].back != 0) {
             glDeleteTextures(1, &settings.planes[i].back);
         }
@@ -577,18 +578,52 @@ void drawPlanes()
     }
 }
 
+void messageRespond(const char *format, ...)
+{
+    char output[MEM_SIZE] = {0};
+
+    va_list args;
+    va_start(args, format);
+    vsprintf(output, format, args);
+    sprintf(
+        settings.shmem,
+        "%c%.*s",
+        MSG_PARENT,
+        MEM_SIZE,
+        output
+    );
+
+    printf(output);
+    va_end(args);
+
+    usleep(100000);
+}
+
 void checkMessages()
 {
     if (settings.shmem[0] != MSG_NONE && settings.shmem[0] != MSG_PARENT) {
         char *tmpstr = strdup(settings.shmem);
-        char separator[4]=" ,\0";
-        char *token = strtok(tmpstr,separator);
-        while(token!=0)
-        {
-            if (MESSAGE(token,"next")) {
-                settings.fading = true;
-                settings.timer = 0;
-            } else if (MESSAGE(token,"current")) {
+        char separator[4] = " ,\0";
+
+        char *token = strtok(tmpstr, separator);
+
+        while (token != 0) {
+            char *command = strdup(token);
+
+            if (MESSAGE(command, "help")) {
+                char output[MEM_SIZE] = {0};
+                int len = 0;
+
+                len = sprintf(output + len, "wallfade messages:\n");
+                len = sprintf(output + len, "\tcurrent : display current wallpapers\n");
+                len = sprintf(output + len, "\tnext    : force wallfade to change wallpapers\n");
+                len = sprintf(output + len, "\tfade    : set fade time\n");
+                len = sprintf(output + len, "\tidle    : set idle time\n");
+                len = sprintf(output + len, "\tsmooth  : change smoothfunction\n");
+
+                messageRespond(output);
+                break;
+            } else if (MESSAGE(command, "current")) {
                 char output[MEM_SIZE] = {0};
 
                 for (int i = 0; i < settings.nmon; i++) {
@@ -606,52 +641,59 @@ void checkMessages()
                     sprintf(output + len, "%.*s", MEM_SIZE - len, line);
                 }
 
-                sprintf(settings.shmem, "%c%.*s", MSG_PARENT, MEM_SIZE, output);
-                usleep(100000);
-            } else if (MESSAGE(token,"fade")) {
-                token = strtok(0,separator);
-                if (token == 0) {
-                    printf("fade needs a number after\n");
-                    break;
-                }
-                if (isdigit(token[0])) {
-                    settings.fade=1.0f/strtof(token,0);
+                messageRespond(output);
+                break;
+            } else if (MESSAGE(command, "next")) {
+                settings.fading = true;
+                settings.timer = 0;
+
+                messageRespond("forcing next wallpapers\n");
+            } else if (MESSAGE(command, "fade")) {
+                token = strtok(0, separator);
+
+                if (token != 0 && isdigit(token[0])) {
+                    settings.fade = 1.0f / strtof(token, 0);
+                    messageRespond("%s set to %s\n", command, token);
                 } else {
-                    printf("idle needs a number after\n");
+                    messageRespond("%s requires an argument\n", command);
                     break;
                 }
-            } else if (MESSAGE(token,"idle")) {
-                token = strtok(0,separator);
-                if (token == 0) {
-                    printf("idle needs a number after\n");
-                    break;
-                }
-                if (isdigit(token[0])) {
-                    settings.idle=strtol(token,0,10);
+            } else if (MESSAGE(command, "idle")) {
+                token = strtok(0, separator);
+
+                if (token != 0 && isdigit(token[0])) {
+                    settings.idle = strtol(token, 0, 10);
+                    messageRespond("%s set to %s\n", command, token);
                 } else {
-                    printf("idle needs a number after\n");
+                    messageRespond("%s requires an argument\n", command);
                     break;
                 }
-            } else if (MESSAGE(token,"smooth")) {
-                token = strtok(0,separator);
-                if (token == 0) {
-                    printf("smooth needs a number after\n");
-                    break;
-                }
-                if (isdigit(token[0])) {
+            } else if (MESSAGE(command, "smooth")) {
+                token = strtok(0, separator);
+
+                if (token != 0 && isdigit(token[0])) {
                     settings.smoothfunction = strtol(token, 0, 10);
+                    messageRespond("%s set to %s\n", command, token);
                 } else {
-                    printf("smooth needs a number after\n");
+                    messageRespond("%s requires an argument\n", command);
                     break;
                 }
             } else {
-                fprintf(stderr, "Unknown command \"%s\"\n", token);
-                settings.shmem[0] = MSG_NONE;
+                messageRespond("Unknown command \"%s\"\n", token);
                 return;
             }
-            token = strtok(0,separator);
+
+            if (command) {
+                free(command);
+            }
+
+            token = strtok(0, separator);
+        };
+
+        if (tmpstr) {
+            free(tmpstr);
         }
-        if(tmpstr) free(tmpstr);
+
         settings.shmem[0] = MSG_NONE;
     }
 }
