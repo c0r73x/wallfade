@@ -38,6 +38,7 @@
 
 #define MSG_NONE '\0'
 #define MSG_PARENT '\1'
+#define MSG_DONE '\2'
 
 struct Path {
     char path[PATH_MAX];
@@ -580,6 +581,10 @@ void drawPlanes()
 
 void messageRespond(const char *format, ...)
 {
+    while (settings.shmem[0] == MSG_PARENT) {
+        usleep(10000);
+    }
+
     char output[MEM_SIZE] = {0};
 
     va_list args;
@@ -595,13 +600,15 @@ void messageRespond(const char *format, ...)
 
     printf(output);
     va_end(args);
-
-    usleep(100000);
 }
 
 void checkMessages()
 {
-    if (settings.shmem[0] != MSG_NONE && settings.shmem[0] != MSG_PARENT) {
+    if (
+        settings.shmem[0] != MSG_NONE &&
+        settings.shmem[0] != MSG_PARENT &&
+        settings.shmem[0] != MSG_DONE
+    ) {
         char *tmpstr = strdup(settings.shmem);
         char separator[4] = " ,\0";
 
@@ -616,7 +623,8 @@ void checkMessages()
 
                 len = sprintf(output + len, "wallfade messages:\n");
                 len = sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len = sprintf(output + len, "\tnext    : force wallfade to change wallpapers\n");
+                len = sprintf(output + len,
+                              "\tnext    : force wallfade to change wallpapers\n");
                 len = sprintf(output + len, "\tfade    : set fade time\n");
                 len = sprintf(output + len, "\tidle    : set idle time\n");
                 len = sprintf(output + len, "\tsmooth  : change smoothfunction\n");
@@ -680,7 +688,7 @@ void checkMessages()
                 }
             } else {
                 messageRespond("Unknown command \"%s\"\n", token);
-                return;
+                break;
             }
 
             if (command) {
@@ -688,13 +696,13 @@ void checkMessages()
             }
 
             token = strtok(0, separator);
-        };
+        }
 
         if (tmpstr) {
             free(tmpstr);
         }
 
-        settings.shmem[0] = MSG_NONE;
+        settings.shmem[0] = MSG_DONE;
     }
 }
 
@@ -1249,15 +1257,17 @@ int main(int argc, char *argv[])
 
                     sprintf(settings.shmem, "%.*s", MEM_SIZE, optarg);
 
-                    while (settings.shmem[0] != MSG_NONE) {
+                    while (settings.shmem[0] != MSG_DONE) {
                         if (settings.shmem[0] == MSG_PARENT) {
                             printf("%s", &settings.shmem[1]);
                             settings.shmem[0] = MSG_NONE;
-                            break;
                         }
 
                         usleep(10000);
                     }
+
+                    printf("%s", &settings.shmem[1]);
+                    settings.shmem[0] = MSG_NONE;
 
                     shmdt(&settings.shmem);
                 } else {
