@@ -1153,7 +1153,6 @@ int getProcIdByName(const char *proc_name)
                 FILE *f = fopen(path, "r");
 
                 if (f == NULL) {
-                    fprintf(stderr, "Unable to open %s for reading!\n", path);
                     continue;
                 }
 
