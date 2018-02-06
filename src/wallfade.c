@@ -124,10 +124,11 @@ void loadTexture(const char *current, uint32_t *id, int width, int height);
 void randomImage(uint32_t *side, struct Plane *plane, const char *not,
                  int monitor);
 void randomImages(int monitor);
-int parsePaths(char *paths);
+int parsePaths(char *paths, int (*outputPtr)(const char *, ...));
 int handler(Display *dpy, XErrorEvent *e);
 int getProcIdByName(const char *proc_name);
 char *createSharedMemory(size_t size, int parent);
+int messageRespond(const char *format, ...);
 void loadConfig();
 
 int handler(Display *dpy, XErrorEvent *e)
@@ -588,7 +589,7 @@ void drawPlanes()
     }
 }
 
-void messageRespond(const char *format, ...)
+int messageRespond(const char *format, ...)
 {
     while (settings.shmem[0] == MSG_PARENT) {
         usleep(10000);
@@ -609,6 +610,8 @@ void messageRespond(const char *format, ...)
 
     printf(output);
     va_end(args);
+
+    return 0;
 }
 
 void checkMessages()
@@ -619,7 +622,7 @@ void checkMessages()
         settings.shmem[0] != MSG_DONE
     ) {
         char *tmpstr = strdup(settings.shmem);
-        char separator[4] = " ,\0";
+        char separator[3] = " \0";
 
         char *token = strtok(tmpstr, separator);
 
@@ -632,10 +635,12 @@ void checkMessages()
 
                 len += sprintf(output + len, "wallfade messages:\n");
                 len += sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len += sprintf(output + len, "\tnext : force wallfade to change wallpapers\n");
+                len += sprintf(output + len,
+                               "\tnext : force wallfade to change wallpapers\n");
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
+                len += sprintf(output + len, "\tpath    : change paths\n");
 
                 messageRespond(output);
                 break;
@@ -658,35 +663,46 @@ void checkMessages()
                 }
 
                 messageRespond(output);
-             } else if (MESSAGE(command, "paths")) {
-                char output[MEM_SIZE] = {0};
+            } else if (MESSAGE(command, "paths")) {
+                token = strtok(0, separator);
 
-                for (int i = 0; i < settings.nmon; i++) {
-                    char line[256] = {0};
+                if (token != 0) {
+                    for (int i = 0; i < settings.nmon; i++) {
+                        memset(settings.paths[i].path, 0, PATH_MAX);
+                    }
 
-                    if(strlen(settings.paths[i].path) > 0) {
-                        sprintf(
+                    parsePaths(token, messageRespond);
+                } else {
+                    char output[MEM_SIZE] = {0};
+
+                    for (int i = 0; i < settings.nmon; i++) {
+                        char line[256] = {0};
+
+                        if (strlen(settings.paths[i].path) > 0) {
+                            sprintf(
                                 line,
                                 "Monitor %d: %.*s\n",
                                 i,
                                 100,
                                 settings.paths[i].path
-                               );
-                    } else {
-                        sprintf(
+                            );
+                        } else {
+                            sprintf(
                                 line,
                                 "Monitor %d: %.*s\n",
                                 i,
                                 100,
                                 settings.default_path
-                               );
+                            );
+                        }
+
+                        int len = strlen(output);
+                        sprintf(output + len, "%.*s", MEM_SIZE - len, line);
                     }
 
-                    int len = strlen(output);
-                    sprintf(output + len, "%.*s", MEM_SIZE - len, line);
+                    messageRespond(output);
                 }
 
-                messageRespond(output);
                 break;
             } else if (MESSAGE(command, "next")) {
                 settings.fading = true;
@@ -1048,12 +1064,12 @@ void randomImages(int monitor)
     }
 }
 
-int parsePaths(char *paths)
+int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
 {
     if (strlen(paths)) {
         char *p = 0;
 
-        while ((p = strsep(&paths, ",")) != NULL) {
+        while ((p = strsep(&paths, ",\0")) != NULL) {
             char *m = 0;
 
             if ((m = strsep(&p, ":")) != NULL && p != NULL) {
@@ -1067,15 +1083,9 @@ int parsePaths(char *paths)
                         p
                     );
                 } else {
-                    fprintf(
-                        stderr,
-                        "Monitor %d not found, using default\n",
-                        monitor
-                    );
+                    fprintf(stderr, "Monitor %d not found.\n", monitor);
                 }
-            }
-
-            if (m != NULL) {
+            } else if (m != NULL) {
                 sprintf(
                     settings.default_path,
                     "%.*s",
@@ -1087,7 +1097,7 @@ int parsePaths(char *paths)
     }
 
     if (strlen(settings.default_path)) {
-        printf("Default path: %s\n", settings.default_path);
+        outputPtr("Default path: %s\n", settings.default_path);
     }
 
     for (int i = 0; i < settings.nmon; i++) {
@@ -1113,7 +1123,7 @@ int parsePaths(char *paths)
             }
         }
 
-        printf("Monitor %d path: %s\n", i, settings.paths[i].path);
+        outputPtr("Monitor %d path: %s\n", i, settings.paths[i].path);
 
         if (settings.paths[i].path[len - 1] != '/') {
             sprintf(
@@ -1231,7 +1241,7 @@ bool fileExists(const char *name)
 
 void loadConfig()
 {
-    dictionary* ini = 0;
+    dictionary *ini = 0;
     char filename[PATH_MAX] = {0};
     char file[255] = {"/wallfade.ini"};
 
@@ -1242,6 +1252,7 @@ void loadConfig()
         confdir = getHomeDir();
     } else {
         sprintf(filename, "%s%s", confdir, file);
+
         if (!fileExists(filename)) {
             sprintf(file, "/.wallfade.ini");
             confdir = getHomeDir();
@@ -1249,6 +1260,10 @@ void loadConfig()
     }
 
     sprintf(filename, "%s%s", confdir, file);
+
+    if (!fileExists(filename)) {
+        sprintf(filename, "./wallfade.ini"); // Useful when debugging
+    }
 
     if (fileExists(filename)) {
         ini = iniparser_load(filename);
@@ -1418,7 +1433,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     } else {
         if (init(argc, argv)) {
-            if (parsePaths(paths)) {
+            if (parsePaths(paths, printf)) {
                 for (int i = 0; i < settings.nmon; i++) {
                     randomImages(i);
                 }
