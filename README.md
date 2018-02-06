@@ -2,7 +2,7 @@
 Application to get fading wallpapers in X
 
 ```
-Usage: ./build/wallfade -p path [options]
+Usage: wallfade [options]
     -f, fade    : fade time (default 1.0s)
     -i, idle    : idle time (default 3s)
     -s, smooth  : smoothing function to use when fading.
@@ -19,6 +19,6 @@ Usage: ./build/wallfade -p path [options]
 
     -l, lower   : finds and lowers window by classname (e.g. Conky)
     -c, center  : center wallpapers
-    -m, message : send message to running process
+    -m, message : send message to running process (-m help)
     -h, help    : help
 ```

@@ -1148,7 +1148,7 @@ int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
 
 void help(const char *filename)
 {
-    printf("Usage: %s -p path [options]\n", filename);
+    printf("Usage: %s [options]\n", filename);
     printf("    -f, fade    : fade time (default 1.0s)\n");
     printf("    -i, idle    : idle time (default 3s)\n");
     printf("    -s, smooth  : smoothing function to use when fading.\n");
@@ -1165,7 +1165,7 @@ void help(const char *filename)
     printf("\n");
     printf("    -l, lower   : finds and lowers window by classname (e.g. Conky)\n");
     printf("    -c, center  : center wallpapers\n");
-    printf("    -m, message : send message to running process\n");
+    printf("    -m, message : send message to running process (-m help)\n");
     printf("    -h, help    : help\n");
     printf("\n");
 }
