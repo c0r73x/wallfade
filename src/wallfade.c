@@ -640,7 +640,7 @@ void checkMessages()
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
-                len += sprintf(output + len, "\tpath    : change paths\n");
+                len += sprintf(output + len, "\tpaths   : change paths\n");
 
                 messageRespond(output);
                 break;
