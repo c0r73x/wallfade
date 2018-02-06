@@ -1,3 +1,5 @@
+; Place me in $XDG_CONFIG_HOME/wallfade.ini or $HOME/.wallfade.ini
+
 [SETTINGS]
 smooth = 2
 idle = 3
