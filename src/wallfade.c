@@ -635,8 +635,7 @@ void checkMessages()
 
                 len += sprintf(output + len, "wallfade messages:\n");
                 len += sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len += sprintf(output + len,
-                               "\tnext : force wallfade to change wallpapers\n");
+                len += sprintf(output + len, "\tnext    : force wallfade to change wallpapers\n");
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
