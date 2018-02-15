@@ -20,6 +20,7 @@
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
 #include <ctype.h>                  // for isdigit
+#include <libgen.h>
 
 #include <iniparser.h>
 
@@ -1085,6 +1086,14 @@ int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
                         (int)sizeof(settings.paths[monitor].path),
                         p
                     );
+                    if(strlen(settings.default_path) == 0) {
+                        sprintf(
+                            settings.default_path,
+                            "%.*s",
+                            (int)sizeof(settings.default_path) - 1,
+                            p
+                        );
+                    }
                 } else {
                     fprintf(stderr, "Monitor %d not found.\n", monitor);
                 }
@@ -1290,6 +1299,9 @@ void loadConfig()
         char monitor[256] = {0};
         sprintf(monitor, "paths:monitor%d", i);
         strcpy(settings.paths[i].path, iniparser_getstring(ini, monitor, "\0"));
+        if(strlen(settings.default_path) == 0) {
+            strcpy(settings.default_path,settings.paths[i].path);
+        }
     }
 
     iniparser_freedict(ini);
@@ -1307,11 +1319,17 @@ void printConfig()
     }
     messageRespond("\n[PATHS]\n");
     if(settings.default_path[0]!=0) {
-        messageRespond("default = \"%s\"\n",settings.default_path);
+        char *dironly = strdup(settings.default_path);
+        dironly = dirname(dironly);
+        messageRespond("default = \"%s\"\n",dironly);
+        free(dironly);
     }
     for(int i = 0; i < MAX_MONITORS; i++) {
         if(settings.paths[i].path[0] != 0) {
-            messageRespond("monitor%i = \"%s\"\n",i , settings.paths[i].path);
+            char *dironly = strdup(settings.paths[i].path);
+            dironly = dirname(dironly);
+            messageRespond("monitor%i = \"%s\"\n",i , dironly);
+            free(dironly);
         }
     }
 }
