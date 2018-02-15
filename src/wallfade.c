@@ -20,6 +20,7 @@
 #include <time.h>                   // for timespec, clock_gettime, time
 #include <unistd.h>                 // for usleep
 #include <ctype.h>                  // for isdigit
+#include <libgen.h>
 
 #include <iniparser.h>
 
@@ -1307,11 +1308,17 @@ void printConfig()
     }
     messageRespond("\n[PATHS]\n");
     if(settings.default_path[0]!=0) {
-        messageRespond("default = \"%s\"\n",settings.default_path);
+        char *dironly = strdup(settings.default_path);
+        dironly = dirname(dironly);
+        messageRespond("default = \"%s\"\n",dironly);
+        free(dironly);
     }
     for(int i = 0; i < MAX_MONITORS; i++) {
         if(settings.paths[i].path[0] != 0) {
-            messageRespond("monitor%i = \"%s\"\n",i , settings.paths[i].path);
+            char *dironly = strdup(settings.paths[i].path);
+            dironly = dirname(dironly);
+            messageRespond("monitor%i = \"%s\"\n",i , dironly);
+            free(dironly);
         }
     }
 }
