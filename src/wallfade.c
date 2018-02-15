@@ -130,6 +130,7 @@ int getProcIdByName(const char *proc_name);
 char *createSharedMemory(size_t size, int parent);
 int messageRespond(const char *format, ...);
 void loadConfig();
+void printConfig();
 
 int handler(Display *dpy, XErrorEvent *e)
 {
@@ -640,6 +641,7 @@ void checkMessages()
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
                 len += sprintf(output + len, "\tpaths   : change paths\n");
+                len += sprintf(output + len, "\tconfig  : print current config\n");
 
                 messageRespond(output);
                 break;
@@ -750,6 +752,8 @@ void checkMessages()
                     );
                     break;
                 }
+            } else if (MESSAGE(command, "config")) {
+                printConfig();
             } else {
                 messageRespond("Unknown command \"%s\"\n", token);
                 break;
@@ -1271,6 +1275,7 @@ void loadConfig()
     settings.smoothfunction = iniparser_getint(ini, "settings:smooth", 2);
     settings.idle = iniparser_getint(ini, "settings:idle", DEFAULT_IDLE_TIME);
     settings.fade = iniparser_getdouble(ini, "settings:fade", DEFAULT_FADE_TIME);
+    settings.fade = 1.0f / settings.fade;
     settings.center = iniparser_getboolean(ini, "settings:center", false);
     strcpy(settings.lower, iniparser_getstring(ini, "settings:lower", "\0"));
 
@@ -1288,6 +1293,27 @@ void loadConfig()
     }
 
     iniparser_freedict(ini);
+}
+
+void printConfig()
+{
+    messageRespond("[SETTINGS]\n");
+    messageRespond("smooth = %i\n", settings.smoothfunction);
+    messageRespond("idle = %i\n", settings.idle);
+    messageRespond("fade = %f\n", 1.0f/settings.fade);
+    messageRespond("center = %s\n", settings.center ? "TRUE" : "FALSE");
+    if(settings.lower[0]!=0) {
+        messageRespond("lower = %s\n", settings.lower);
+    }
+    messageRespond("\n[PATHS]\n");
+    if(settings.default_path[0]!=0) {
+        messageRespond("default = \"%s\"\n",settings.default_path);
+    }
+    for(int i = 0; i < MAX_MONITORS; i++) {
+        if(settings.paths[i].path[0] != 0) {
+            messageRespond("monitor%i = \"%s\"\n",i , settings.paths[i].path);
+        }
+    }
 }
 
 char *createSharedMemory(size_t size, int parent)
