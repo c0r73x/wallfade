@@ -1086,6 +1086,14 @@ int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
                         (int)sizeof(settings.paths[monitor].path),
                         p
                     );
+                    if(strlen(settings.default_path) == 0) {
+                        sprintf(
+                            settings.default_path,
+                            "%.*s",
+                            (int)sizeof(settings.default_path) - 1,
+                            p
+                        );
+                    }
                 } else {
                     fprintf(stderr, "Monitor %d not found.\n", monitor);
                 }
@@ -1291,6 +1299,9 @@ void loadConfig()
         char monitor[256] = {0};
         sprintf(monitor, "paths:monitor%d", i);
         strcpy(settings.paths[i].path, iniparser_getstring(ini, monitor, "\0"));
+        if(strlen(settings.default_path) == 0) {
+            strcpy(settings.default_path,settings.paths[i].path);
+        }
     }
 
     iniparser_freedict(ini);
