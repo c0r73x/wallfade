@@ -1,3 +1,5 @@
+[![Build Status](http://fredrik.fulhax.nu:8090/view/All/job/c0r73x/job/wallfade/job/master/badge/icon)](http://fredrik.fulhax.nu:8090/view/All/job/c0r73x/job/wallfade/job/master/)
+
 # wallfade
 Application to get fading wallpapers in X
 
