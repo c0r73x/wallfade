@@ -868,15 +868,10 @@ void cleanFiles(char **files, int total_files)
 void ThrowWandException(MagickWand *wand)
 {
     char *description;
-
     ExceptionType severity;
 
     description = MagickGetException(wand, &severity);
-    #ifdef GraphicsMagick
-    fprintf(stderr, "%s %s %d %s\n", GetMagickModule(), description);
-    #else
-    fprintf(stderr, "%s %s %lu %s\n", GetMagickModule(), description);
-    #endif
+    fprintf(stderr, "Wand Error: %s\n", description);
     MagickRelinquishMemory(description);
     exit(-1);
 }
