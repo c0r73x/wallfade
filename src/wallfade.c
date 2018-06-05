@@ -385,6 +385,17 @@ int init(int argc, char **argv)
         NULL
     );
 
+    XClassHint hints;
+
+    hints.res_name = "wallfade";
+    hints.res_class = "Wallfade";
+
+    XSetClassHint(
+        settings.dpy,
+        settings.win,
+        &hints
+    );
+
     Atom state[5];
 
     state[0] = XInternAtom(settings.dpy, "_NET_WM_STATE_BELOW", 0);
