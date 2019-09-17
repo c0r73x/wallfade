@@ -41,6 +41,7 @@ include_directories(
     ${ImageMagick_INCLUDE_DIRS}
     ${X11_INCLUDE_DIR}
     ${X11_Xrandr_INCLUDE_PATH}
+    ${X11_Xinerama_INCLUDE_PATH}
     ${X11_Xcomposite_INCLUDE_PATH}
     ${OPENGL_INCLUDE_DIR}
     ${INIPARSER_INCLUDE_DIRS}
@@ -68,6 +69,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${ImageMagick_LIBRARIES}
     ${X11_LIBRARIES}
     ${X11_Xrandr_LIB}
+    ${X11_Xinerama_LIB}
     ${X11_Xcomposite_LIB}
     ${OPENGL_LIBRARIES}
     ${INIPARSER_LIBRARIES}

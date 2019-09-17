@@ -4,7 +4,6 @@
 #include <X11/Xatom.h>              // for XA_ATOM
 #include <X11/Xlib.h>               // for Screen, (anonymous), XOpenDisplay
 #include <X11/Xutil.h>              // for XVisualInfo
-#include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
 #include <dirent.h>                 // for DIR, opendir, closedir, readdir
 #include <getopt.h>                 // for optarg, getopt
 #include <glob.h>                   // for glob_t, glob, globfree, GLOB_BRACE
@@ -21,6 +20,9 @@
 #include <unistd.h>                 // for usleep
 #include <ctype.h>                  // for isdigit
 #include <libgen.h>
+
+#include <X11/extensions/Xrandr.h>  // for XRRMonitorInfo, XRRFreeMonitors
+#include <X11/extensions/Xinerama.h>
 
 #include <iniparser.h>
 
@@ -108,7 +110,8 @@ pthread_t thread;
 Window findByClass(const char *classname);
 Window findDesktop();
 float getDeltaTime();
-void getMonitors();
+int getMonitorsXRR();
+int getMonitorsXinerama();
 void initOpengl();
 int init();
 void gotsig(int signum);
@@ -217,7 +220,47 @@ float getDeltaTime()
     return difftime * 0.001f;
 }
 
-void getMonitors()
+int getMonitorsXinerama()
+{
+    if (!XineramaIsActive(settings.dpy)) {
+        return 0;
+    }
+
+    XineramaScreenInfo *monitors = XineramaQueryScreens(
+                                       settings.dpy,
+                                       &settings.nmon
+                                   );
+
+    if (monitors == 0) {
+        return 0;
+    }
+
+    settings.planes = malloc(settings.nmon * sizeof(struct Plane));
+    settings.nfiles = malloc(settings.nmon * sizeof(int));
+
+    for (int i = 0; i < settings.nmon; i++) {
+        settings.planes[i].width = monitors[i].width;
+        settings.planes[i].height = monitors[i].height;
+        settings.planes[i].x = monitors[i].x_org;
+        settings.planes[i].y = monitors[i].y_org;
+
+        settings.planes[i].front = 0;
+        settings.planes[i].back = 0;
+
+        printf(
+            "monitor: %d %dx%d+%d+%d\n",
+            i,
+            monitors[i].width,
+            monitors[i].height,
+            monitors[i].x_org,
+            monitors[i].y_org
+        );
+    }
+
+    return 1;
+}
+
+int getMonitorsXRR()
 {
     XRRMonitorInfo *monitors = XRRGetMonitors(
                                    settings.dpy,
@@ -226,9 +269,8 @@ void getMonitors()
                                    &settings.nmon
                                );
 
-    if (settings.nmon == -1) {
-        fprintf(stderr, "Unable to find monitors\n");
-        exit(-1);
+    if (monitors == 0) {
+        return 0;
     }
 
     settings.planes = malloc(settings.nmon * sizeof(struct Plane));
@@ -254,6 +296,7 @@ void getMonitors()
     }
 
     XRRFreeMonitors(monitors);
+    return 1;
 }
 
 void initOpengl()
@@ -432,7 +475,13 @@ int init(int argc, char **argv)
     XLowerWindow(settings.dpy, settings.win);
     XSync(settings.dpy, settings.win);
 
-    getMonitors();
+    if (!getMonitorsXRR()) {
+        if (!getMonitorsXinerama()) {
+            fprintf(stderr, "Unable to find monitors\n");
+            exit(-1);
+        }
+    }
+
     initOpengl();
 
     return 1;
@@ -648,7 +697,8 @@ void checkMessages()
 
                 len += sprintf(output + len, "wallfade messages:\n");
                 len += sprintf(output + len, "\tcurrent : display current wallpapers\n");
-                len += sprintf(output + len, "\tnext    : force wallfade to change wallpapers\n");
+                len += sprintf(output + len,
+                               "\tnext    : force wallfade to change wallpapers\n");
                 len += sprintf(output + len, "\tfade    : set fade time\n");
                 len += sprintf(output + len, "\tidle    : set idle time\n");
                 len += sprintf(output + len, "\tsmooth  : change smoothfunction\n");
@@ -1092,7 +1142,8 @@ int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
                         (int)sizeof(settings.paths[monitor].path),
                         p
                     );
-                    if(strlen(settings.default_path) == 0) {
+
+                    if (strlen(settings.default_path) == 0) {
                         sprintf(
                             settings.default_path,
                             "%.*s",
@@ -1305,8 +1356,9 @@ void loadConfig()
         char monitor[256] = {0};
         sprintf(monitor, "paths:monitor%d", i);
         strcpy(settings.paths[i].path, iniparser_getstring(ini, monitor, "\0"));
-        if(strlen(settings.default_path) == 0) {
-            strcpy(settings.default_path,settings.paths[i].path);
+
+        if (strlen(settings.default_path) == 0) {
+            strcpy(settings.default_path, settings.paths[i].path);
         }
     }
 
@@ -1318,23 +1370,27 @@ void printConfig()
     messageRespond("[SETTINGS]\n");
     messageRespond("smooth = %i\n", settings.smoothfunction);
     messageRespond("idle = %i\n", settings.idle);
-    messageRespond("fade = %f\n", 1.0f/settings.fade);
+    messageRespond("fade = %f\n", 1.0f / settings.fade);
     messageRespond("center = %s\n", settings.center ? "TRUE" : "FALSE");
-    if(settings.lower[0]!=0) {
+
+    if (settings.lower[0] != 0) {
         messageRespond("lower = %s\n", settings.lower);
     }
+
     messageRespond("\n[PATHS]\n");
-    if(settings.default_path[0]!=0) {
+
+    if (settings.default_path[0] != 0) {
         char *dironly = strdup(settings.default_path);
         dironly = dirname(dironly);
-        messageRespond("default = \"%s\"\n",dironly);
+        messageRespond("default = \"%s\"\n", dironly);
         free(dironly);
     }
-    for(int i = 0; i < MAX_MONITORS; i++) {
-        if(settings.paths[i].path[0] != 0) {
+
+    for (int i = 0; i < MAX_MONITORS; i++) {
+        if (settings.paths[i].path[0] != 0) {
             char *dironly = strdup(settings.paths[i].path);
             dironly = dirname(dironly);
-            messageRespond("monitor%i = \"%s\"\n",i , dironly);
+            messageRespond("monitor%i = \"%s\"\n", i, dironly);
             free(dironly);
         }
     }
