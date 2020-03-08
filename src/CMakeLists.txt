@@ -17,6 +17,8 @@ else()
     set(UseGraphicsMagick 1)
 endif()
 
+set(OpenGL_GL_PREFERENCE GLVND)
+
 find_package(Iniparser REQUIRED)
 find_package(X11 REQUIRED)
 find_package(OpenGL REQUIRED)

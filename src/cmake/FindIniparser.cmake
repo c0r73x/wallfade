@@ -26,11 +26,16 @@ else (INIPARSER_LIBRARIES AND INIPARSER_INCLUDE_DIRS)
       /usr/local/include
       /opt/local/include
       /sw/include
+      /usr/include/iniparser4
+      /usr/local/include/iniparser4
+      /opt/local/include/iniparser4
+      /sw/include/iniparser4
   )
 
   find_library(INIPARSER_LIBRARY
     NAMES
       iniparser
+      iniparser4
     PATHS
       /usr/lib
       /usr/local/lib
