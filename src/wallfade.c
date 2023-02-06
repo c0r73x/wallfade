@@ -94,6 +94,7 @@ struct _settings {
     bool running;
     bool fading;
     bool center;
+    bool mirror[MAX_MONITORS];
 
     char lower[PATH_MAX];
     char default_path[PATH_MAX];
@@ -523,29 +524,29 @@ void shutdown()
     #endif
 }
 
-void drawPlane(struct Plane *plane, uint32_t texture, float alpha)
+void drawPlane(struct Plane *plane, uint32_t texture, float alpha,bool mirror)
 {
     glBindTexture(GL_TEXTURE_2D, texture);
     glBegin(GL_QUADS);
-    glTexCoord2f(0, 0);
+    glTexCoord2f((float)(mirror), 0);
     glColor4f(1, 1, 1, alpha);
     glVertex2i(
         plane->x,
         plane->y
     );
-    glTexCoord2f(0, 1);
+    glTexCoord2f((float)(mirror), 1);
     glColor4f(1, 1, 1, alpha);
     glVertex2i(
         plane->x,
         plane->y + plane->height
     );
-    glTexCoord2f(1, 1);
+    glTexCoord2f((float)(!mirror), 1);
     glColor4f(1, 1, 1, alpha);
     glVertex2i(
         plane->x + plane->width,
         plane->y + plane->height
     );
-    glTexCoord2f(1, 0);
+    glTexCoord2f((float)(!mirror), 0);
     glColor4f(1, 1, 1, alpha);
     glVertex2i(
         plane->x + plane->width,
@@ -623,18 +624,21 @@ void drawPlanes()
                 drawPlane(
                     &settings.planes[i],
                     settings.planes[i].back,
-                    1.0f
+                    1.0f,
+                    settings.mirror[i]
                 );
                 drawPlane(
                     &settings.planes[i],
                     settings.planes[i].front,
-                    1.0f - alpha
+                    1.0f - alpha,
+                    settings.mirror[i]
                 );
             } else {
                 drawPlane(
                     &settings.planes[i],
                     settings.planes[i].front,
-                    1.0f
+                    1.0f,
+                    settings.mirror[i]
                 );
                 randomImage(
                     &settings.planes[i].back,
@@ -670,7 +674,7 @@ int messageRespond(const char *format, ...)
         output
     );
 
-    printf(output);
+    printf("%s",output);
     va_end(args);
 
     return 0;
@@ -1089,7 +1093,7 @@ void randomImage(uint32_t *side, struct Plane *plane, const char *not,
         sprintf(
             plane->back_path,
             "%.*s",
-            (int)sizeof(plane->back_path),
+            (int)sizeof(plane->back_path) - 1,
             files[bkrand]
         );
 
@@ -1124,6 +1128,21 @@ void randomImages(int monitor)
     }
 }
 
+void parseMirrors(char *mirrors)
+{
+    if(strlen(mirrors)) {
+        char *p = 0;
+        int monitor = 0;
+        while ((p = strsep(&mirrors, ",\0")) != NULL) {
+            settings.mirror[monitor]=atoi(p);
+            monitor++;
+            if(monitor>=MAX_MONITORS) break;
+        }
+
+    }
+
+}
+
 int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
 {
     if (strlen(paths)) {
@@ -1139,7 +1158,7 @@ int parsePaths(char *paths, int (*outputPtr)(const char *, ...))
                     sprintf(
                         settings.paths[monitor].path,
                         "%.*s",
-                        (int)sizeof(settings.paths[monitor].path),
+                        (int)sizeof(settings.paths[monitor].path) - 1,
                         p
                     );
 
@@ -1360,6 +1379,9 @@ void loadConfig()
         if (strlen(settings.default_path) == 0) {
             strcpy(settings.default_path, settings.paths[i].path);
         }
+        char mirror[256] = {0};
+        sprintf(mirror, "mirror:monitor%d", i);
+        settings.mirror[i] = iniparser_getboolean(ini, mirror, 0);
     }
 
     iniparser_freedict(ini);
@@ -1393,6 +1415,10 @@ void printConfig()
             messageRespond("monitor%i = \"%s\"\n", i, dironly);
             free(dironly);
         }
+    }
+    messageRespond("\n[MIRROR]\n");
+    for(int i = 0; i < MAX_MONITORS; i++) {
+        messageRespond("monitor%i = %s\n",i , settings.mirror[i] ? "TRUE" : "FALSE");
     }
 }
 
@@ -1445,17 +1471,19 @@ int main(int argc, char *argv[])
         { "fade", required_argument, 0, 'f' },
         { "idle", required_argument, 0, 'i' },
         { "message", required_argument, 0, 'm' },
+        { "mirror", required_argument, 0, 'M' },
         { "help", no_argument, 0, 'h' },
         { 0, 0, 0, 0 }
     };
 
     int longIndex = 0;
     char paths[PATH_MAX * MAX_MONITORS] = {0};
+    char mirrors[PATH_MAX * MAX_MONITORS] = {0};
 
     while ((c = getopt_long(
                     argc,
                     argv,
-                    "o:p:f:i:hcs:l:m:",
+                    "o:p:f:i:hcs:l:m:M:",
                     longOpts,
                     &longIndex
                 )) != -1) {
@@ -1482,6 +1510,10 @@ int main(int argc, char *argv[])
 
             case 'p':
                 sprintf(paths, "%.*s", (PATH_MAX * MAX_MONITORS) - 1, optarg);
+                break;
+
+            case 'M':
+                sprintf(mirrors, "%.*s", (PATH_MAX * MAX_MONITORS) - 1, optarg);
                 break;
 
             case 'm':
@@ -1538,6 +1570,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     } else {
         if (init(argc, argv)) {
+            parseMirrors(mirrors);
             if (parsePaths(paths, printf)) {
                 for (int i = 0; i < settings.nmon; i++) {
                     randomImages(i);
